@@ -1,0 +1,46 @@
+/* Global Print Styles - Ensures main page is NOT affected */
+@media print {
+  /* Hide everything except the receipt when printing */
+  body > *:not(.receipt-content):not(.receipt-paper) {
+    display: none !important;
+  }
+  
+  /* Hide all dialogs, navigation, headers, etc. */
+  .MuiDialog-root,
+  .MuiDialog-paper,
+  .MuiDialogTitle-root,
+  .MuiDialogContent-root,
+  .MuiDialogActions-root,
+  .MuiBackdrop-root,
+  .MuiAppBar-root,
+  .MuiDrawer-root,
+  .MuiToolbar-root,
+  nav,
+  header,
+  button,
+  .MuiButton-root,
+  .MuiFab-root {
+    display: none !important;
+  }
+  
+  /* Only show receipt content when printing from dialog */
+  .receipt-content,
+  .receipt-paper {
+    display: block !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 20px !important;
+    background: white !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+
+/* Ensure receipt content is styled properly */
+.receipt-content {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}

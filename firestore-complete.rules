@@ -1,0 +1,336 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================
+    // HELPER FUNCTIONS FOR ROLE-BASED ACCESS CONTROL
+    // ===============================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // For production (with Cloud Functions custom claims)
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.role == 'super_admin' &&
+             request.auth.token.status == 'active';
+    }
+    
+    function isOrgAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.role == 'org_admin' &&
+             request.auth.token.status == 'active';
+    }
+    
+    function isPropertyManager() {
+      return isAuthenticated() && 
+             request.auth.token.role == 'property_manager' &&
+             request.auth.token.status == 'active';
+    }
+    
+    function isFinancialViewer() {
+      return isAuthenticated() && 
+             request.auth.token.role == 'financial_viewer' &&
+             request.auth.token.status == 'active';
+    }
+    
+    function hasPermission(permission) {
+      return isAuthenticated() && 
+             permission in request.auth.token.permissions;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function belongsToOrganization(orgId) {
+      return isAuthenticated() && 
+             request.auth.token.organizationId == orgId;
+    }
+    
+    // For current setup (without Cloud Functions - reads from Firestore)
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roleId;
+    }
+    
+    function getUserStatus() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status;
+    }
+    
+    function getUserPermissions() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions;
+    }
+    
+    function getUserOrganization() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId;
+    }
+    
+    function isSuperAdminFromFirestore() {
+      return isAuthenticated() && 
+             getUserRole() == 'super_admin' &&
+             getUserStatus() == 'active';
+    }
+    
+    function isOrgAdminFromFirestore() {
+      return isAuthenticated() && 
+             getUserRole() == 'org_admin' &&
+             getUserStatus() == 'active';
+    }
+    
+    function isPropertyManagerFromFirestore() {
+      return isAuthenticated() && 
+             getUserRole() == 'property_manager' &&
+             getUserStatus() == 'active';
+    }
+    
+    function isFinancialViewerFromFirestore() {
+      return isAuthenticated() && 
+             getUserRole() == 'financial_viewer' &&
+             getUserStatus() == 'active';
+    }
+    
+    function belongsToOrganizationFromFirestore(orgId) {
+      return isAuthenticated() && 
+             getUserOrganization() == orgId;
+    }
+    
+    // ===============================================
+    // USER MANAGEMENT
+    // ===============================================
+    
+    match /users/{userId} {
+      // Users can read/write their own profile
+      allow read, write: if isOwner(userId);
+      
+      // Super admin can read/write all users (both custom claims and Firestore)
+      allow read, write: if isSuperAdmin() || isSuperAdminFromFirestore();
+      
+      // Org admin can read/write users in their organization
+      allow read, write: if (isOrgAdmin() && belongsToOrganization(resource.data.organizationId)) ||
+                         (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Allow creating new user profiles (for registration)
+      allow create: if isAuthenticated() && 
+                    request.resource.data.uid == request.auth.uid;
+    }
+    
+    // ===============================================
+    // ORGANIZATIONS
+    // ===============================================
+    
+    match /organizations/{organizationId} {
+      // Super admin has full access to all organizations
+      allow read, write, delete: if isSuperAdmin() || isSuperAdminFromFirestore();
+      
+      // Org admin can read/write their own organization
+      allow read, write: if (isOrgAdmin() && belongsToOrganization(organizationId)) ||
+                         (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(organizationId));
+      
+      // Allow creating organizations (for super admin)
+      allow create: if isSuperAdmin() || isSuperAdminFromFirestore();
+    }
+    
+    // ===============================================
+    // PROPERTIES
+    // ===============================================
+    
+    match /properties/{propertyId} {
+      // Super admin has full access to all properties
+      allow read, write, delete: if isSuperAdmin() || isSuperAdminFromFirestore();
+      
+      // Org admin can read/write properties in their organization
+      allow read, write, delete: if (isOrgAdmin() && belongsToOrganization(resource.data.organizationId)) ||
+                                 (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Property manager can read/write assigned properties
+      allow read, write: if (isPropertyManager() && request.auth.uid in resource.data.assignedManagers) ||
+                         (isPropertyManagerFromFirestore() && request.auth.uid in resource.data.assignedManagers);
+      
+      // Financial viewer can read properties in their organization
+      allow read: if (isFinancialViewer() && belongsToOrganization(resource.data.organizationId)) ||
+                 (isFinancialViewerFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Allow creating properties
+      allow create: if isSuperAdmin() || isSuperAdminFromFirestore() ||
+                   (isOrgAdmin() && belongsToOrganization(request.resource.data.organizationId)) ||
+                   (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(request.resource.data.organizationId)) ||
+                   (isPropertyManager() && belongsToOrganization(request.resource.data.organizationId)) ||
+                   (isPropertyManagerFromFirestore() && belongsToOrganizationFromFirestore(request.resource.data.organizationId));
+    }
+    
+    // ===============================================
+    // TENANTS
+    // ===============================================
+    
+    match /tenants/{tenantId} {
+      // Super admin has full access to all tenants
+      allow read, write, delete: if isSuperAdmin() || isSuperAdminFromFirestore();
+      
+      // Org admin can read/write tenants in their organization
+      allow read, write, delete: if (isOrgAdmin() && belongsToOrganization(resource.data.organizationId)) ||
+                                (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Property manager can read/write tenants for assigned properties
+      allow read, write: if (isPropertyManager() && request.auth.uid in resource.data.propertyManagerIds) ||
+                         (isPropertyManagerFromFirestore() && request.auth.uid in resource.data.propertyManagerIds);
+      
+      // Financial viewer can read tenants in their organization
+      allow read: if (isFinancialViewer() && belongsToOrganization(resource.data.organizationId)) ||
+                 (isFinancialViewerFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Allow creating tenants
+      allow create: if isSuperAdmin() || isSuperAdminFromFirestore() ||
+                   (isOrgAdmin() && belongsToOrganization(request.resource.data.organizationId)) ||
+                   (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(request.resource.data.organizationId)) ||
+                   (isPropertyManager() && request.auth.uid in request.resource.data.propertyManagerIds) ||
+                   (isPropertyManagerFromFirestore() && request.auth.uid in request.resource.data.propertyManagerIds);
+    }
+    
+    // ===============================================
+    // PAYMENTS
+    // ===============================================
+    
+    match /payments/{paymentId} {
+      // Super admin has full access to all payments
+      allow read, write, delete: if isSuperAdmin() || isSuperAdminFromFirestore();
+      
+      // Org admin can read/write payments in their organization
+      allow read, write, delete: if (isOrgAdmin() && belongsToOrganization(resource.data.organizationId)) ||
+                               (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Property manager can read/write payments for assigned properties
+      allow read, write: if (isPropertyManager() && request.auth.uid in resource.data.propertyManagerIds) ||
+                         (isPropertyManagerFromFirestore() && request.auth.uid in resource.data.propertyManagerIds);
+      
+      // Financial viewer can read payments in their organization
+      allow read: if (isFinancialViewer() && belongsToOrganization(resource.data.organizationId)) ||
+                 (isFinancialViewerFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Allow creating payments
+      allow create: if isSuperAdmin() || isSuperAdminFromFirestore() ||
+                   (isOrgAdmin() && belongsToOrganization(request.resource.data.organizationId)) ||
+                   (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(request.resource.data.organizationId)) ||
+                   (isPropertyManager() && request.auth.uid in request.resource.data.propertyManagerIds) ||
+                   (isPropertyManagerFromFirestore() && request.auth.uid in request.resource.data.propertyManagerIds);
+    }
+    
+    // ===============================================
+    // RENT RECORDS
+    // ===============================================
+    
+    match /rent/{rentId} {
+      // Super admin has full access to all rent records
+      allow read, write, delete: if isSuperAdmin() || isSuperAdminFromFirestore();
+      
+      // Org admin can read/write rent records in their organization
+      allow read, write, delete: if (isOrgAdmin() && belongsToOrganization(resource.data.organizationId)) ||
+                                (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Property manager can read/write rent records for assigned properties
+      allow read, write: if (isPropertyManager() && request.auth.uid in resource.data.propertyManagerIds) ||
+                         (isPropertyManagerFromFirestore() && request.auth.uid in resource.data.propertyManagerIds);
+      
+      // Financial viewer can read rent records in their organization
+      allow read: if (isFinancialViewer() && belongsToOrganization(resource.data.organizationId)) ||
+                 (isFinancialViewerFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Allow creating rent records
+      allow create: if isSuperAdmin() || isSuperAdminFromFirestore() ||
+                   (isOrgAdmin() && belongsToOrganization(request.resource.data.organizationId)) ||
+                   (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(request.resource.data.organizationId)) ||
+                   (isPropertyManager() && request.auth.uid in request.resource.data.propertyManagerIds) ||
+                   (isPropertyManagerFromFirestore() && request.auth.uid in request.resource.data.propertyManagerIds);
+    }
+    
+    // ===============================================
+    // REPORTS
+    // ===============================================
+    
+    match /reports/{reportId} {
+      // Super admin has full access to all reports
+      allow read, write, delete: if isSuperAdmin() || isSuperAdminFromFirestore();
+      
+      // Org admin can read/write reports in their organization
+      allow read, write, delete: if (isOrgAdmin() && belongsToOrganization(resource.data.organizationId)) ||
+                                (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Property manager can read/write reports for assigned properties
+      allow read, write: if (isPropertyManager() && request.auth.uid in resource.data.propertyManagerIds) ||
+                         (isPropertyManagerFromFirestore() && request.auth.uid in resource.data.propertyManagerIds);
+      
+      // Financial viewer can read reports in their organization
+      allow read: if (isFinancialViewer() && belongsToOrganization(resource.data.organizationId)) ||
+                 (isFinancialViewerFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Allow creating reports
+      allow create: if isSuperAdmin() || isSuperAdminFromFirestore() ||
+                   (isOrgAdmin() && belongsToOrganization(request.resource.data.organizationId)) ||
+                   (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(request.resource.data.organizationId)) ||
+                   (isPropertyManager() && request.auth.uid in request.resource.data.propertyManagerIds) ||
+                   (isPropertyManagerFromFirestore() && request.auth.uid in request.resource.data.propertyManagerIds);
+    }
+    
+    // ===============================================
+    // PROPERTY ASSIGNMENTS
+    // ===============================================
+    
+    match /assignments/{assignmentId} {
+      // Super admin has full access to all assignments
+      allow read, write, delete: if isSuperAdmin() || isSuperAdminFromFirestore();
+      
+      // Org admin can read/write assignments in their organization
+      allow read, write, delete: if (isOrgAdmin() && belongsToOrganization(resource.data.organizationId)) ||
+                                (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Property manager can read assignments they're involved in
+      allow read: if (isPropertyManager() && request.auth.uid in resource.data.managerIds) ||
+                 (isPropertyManagerFromFirestore() && request.auth.uid in resource.data.managerIds);
+      
+      // Allow creating assignments
+      allow create: if isSuperAdmin() || isSuperAdminFromFirestore() ||
+                   (isOrgAdmin() && belongsToOrganization(request.resource.data.organizationId)) ||
+                   (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(request.resource.data.organizationId));
+    }
+    
+    // ===============================================
+    // SYSTEM CONFIGURATION (Super Admin Only)
+    // ===============================================
+    
+    match /system/{configId} {
+      // Only super admin can access system configuration
+      allow read, write, delete: if isSuperAdmin() || isSuperAdminFromFirestore();
+      allow create: if isSuperAdmin() || isSuperAdminFromFirestore();
+    }
+    
+    // ===============================================
+    // ROLE DEFINITIONS (Super Admin Only)
+    // ===============================================
+    
+    match /roles/{roleId} {
+      // Only super admin can manage roles
+      allow read, write, delete: if isSuperAdmin() || isSuperAdminFromFirestore();
+      allow create: if isSuperAdmin() || isSuperAdminFromFirestore();
+    }
+    
+    // ===============================================
+    // AUDIT LOGS (Super Admin Only)
+    // ===============================================
+    
+    match /audit_logs/{logId} {
+      // Only super admin can access audit logs
+      allow read: if isSuperAdmin() || isSuperAdminFromFirestore();
+      allow write: if isAuthenticated(); // Allow writing for logging purposes
+    }
+    
+    // ===============================================
+    // TEMPORARY DEVELOPMENT RULES (Fallback)
+    // ===============================================
+    
+    // If none of the above rules match, allow authenticated users
+    // This is a fallback for development/testing
+    match /{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

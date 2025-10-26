@@ -1,0 +1,54 @@
+{
+  "name": "property-management-system",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A comprehensive property management web application with direct Firebase integration",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint . --ext js,jsx,ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview",
+    "add-permissions": "node scripts/addPermissionsToUsers.js"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
+    "@hookform/resolvers": "^3.3.2",
+    "@mui/icons-material": "^5.14.18",
+    "@mui/material": "^5.14.18",
+    "axios": "^1.6.2",
+    "date-fns": "^2.30.0",
+    "firebase": "^10.6.0",
+    "firebase-admin": "^13.5.0",
+    "qrcode": "^1.5.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hook-form": "^7.47.0",
+    "react-hot-toast": "^2.4.1",
+    "react-query": "^3.39.3",
+    "react-router-dom": "^6.18.0",
+    "recharts": "^2.8.0",
+    "yup": "^1.3.3"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "@vitejs/plugin-react": "^4.1.1",
+    "eslint": "^8.53.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.4",
+    "vite": "^4.5.0"
+  },
+  "keywords": [
+    "property-management",
+    "rent-tracking",
+    "firebase",
+    "react",
+    "firestore",
+    "real-time"
+  ],
+  "author": "",
+  "license": "MIT",
+  "private": true,
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+}
