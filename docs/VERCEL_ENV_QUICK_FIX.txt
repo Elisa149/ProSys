@@ -1,0 +1,83 @@
+═══════════════════════════════════════════════════════════════════
+  VERCEL FIREBASE ERROR - QUICK FIX GUIDE
+═══════════════════════════════════════════════════════════════════
+
+ERROR: "❌ Missing required Firebase environment variables"
+ERROR: "auth/invalid-api-key"
+
+╔═══════════════════════════════════════════════════════════════╗
+║  WHAT'S WRONG?                                                ║
+╚═══════════════════════════════════════════════════════════════╝
+
+Your Vercel deployment doesn't have Firebase environment variables.
+They need to be added manually in Vercel Dashboard.
+
+╔═══════════════════════════════════════════════════════════════╗
+║  QUICK FIX (5 MINUTES)                                        ║
+╚═══════════════════════════════════════════════════════════════╝
+
+STEP 1: GET YOUR FIREBASE CREDENTIALS
+───────────────────────────────────────────────────────────────────
+
+Go to: https://console.firebase.google.com/project/fam-rent-sys/settings/general
+
+Look for "Your apps" section → Find web app (</> icon)
+Click on it → Copy the firebaseConfig values
+
+
+STEP 2: ADD TO VERCEL
+───────────────────────────────────────────────────────────────────
+
+1. Go to: https://vercel.com/dashboard
+2. Click your project
+3. Settings → Environment Variables
+4. Add these 4 REQUIRED variables:
+
+   VITE_FIREBASE_API_KEY = (from Firebase console)
+   VITE_FIREBASE_AUTH_DOMAIN = fam-rent-sys.firebaseapp.com
+   VITE_FIREBASE_PROJECT_ID = fam-rent-sys
+   VITE_FIREBASE_APP_ID = (from Firebase console)
+
+5. Select: ✅ Production ✅ Preview ✅ Development
+6. Click Save for each variable
+
+
+STEP 3: REDEPLOY
+───────────────────────────────────────────────────────────────────
+
+1. Go to Deployments tab
+2. Click ⋯ (three dots) on latest deployment
+3. Click "Redeploy"
+4. Wait for completion
+5. Test your app!
+
+╔═══════════════════════════════════════════════════════════════╗
+║  EXAMPLE FIREBASE CONFIG (from Firebase Console)             ║
+╚═══════════════════════════════════════════════════════════════╝
+
+const firebaseConfig = {
+  apiKey: "AIzaSy...",                    ← Use for VITE_FIREBASE_API_KEY
+  authDomain: "fam-rent-sys.firebaseapp.com",
+  projectId: "fam-rent-sys",              ← Use for VITE_FIREBASE_PROJECT_ID
+  storageBucket: "fam-rent-sys.appspot.com",
+  messagingSenderId: "486847309168",
+  appId: "1:486847309168:web:...",        ← Use for VITE_FIREBASE_APP_ID
+  measurementId: "G-XXXXXXXXXX"
+};
+
+╔═══════════════════════════════════════════════════════════════╗
+║  CHECKLIST                                                     ║
+╚═══════════════════════════════════════════════════════════════╝
+
+□ Opened Firebase Console
+□ Found firebaseConfig values
+□ Opened Vercel Dashboard
+□ Added 4 environment variables
+□ Selected ALL environments
+□ Redeployed app
+□ Tested - No more errors!
+
+═══════════════════════════════════════════════════════════════════
+  For detailed instructions, see: docs/VERCEL_ENV_FIX.md
+═══════════════════════════════════════════════════════════════════
+
