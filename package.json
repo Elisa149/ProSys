@@ -35,8 +35,10 @@
     "@types/react-dom": "^18.2.15",
     "@vitejs/plugin-react": "^4.1.1",
     "eslint": "^8.53.0",
+    "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.4",
+    "jsx-ast-utils": "^3.3.5",
     "vite": "^4.5.0"
   },
   "keywords": [

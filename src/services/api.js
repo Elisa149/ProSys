@@ -207,7 +207,7 @@ export const organizationsAPI = {
   getById: (id) => Promise.resolve({ data: {} }),
   create: (data) => Promise.resolve({ data }),
   update: (id, data) => Promise.resolve({ data }),
-  delete: (id) => Promise.resolve({ data }),
+  delete: (id) => Promise.resolve({ data: {} }),
   getRoles: (id) => Promise.resolve({ data: [] }),
 };
 
