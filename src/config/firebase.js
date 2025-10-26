@@ -15,26 +15,52 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+// Validate required Firebase environment variables
+const requiredEnvVars = [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_APP_ID'
+];
+
+const missingEnvVars = requiredEnvVars.filter(varName => !import.meta.env[varName]);
+
+if (missingEnvVars.length > 0) {
+  console.error('❌ Missing required Firebase environment variables:', missingEnvVars);
+  console.error('Please ensure all Firebase environment variables are set in your Vercel project settings.');
+}
+
 // Debug: Log Firebase config in development
 if (import.meta.env.DEV) {
   console.log('🔥 Firebase Config:', firebaseConfig);
   console.log('🔥 Environment Variables:', {
-    VITE_FIREBASE_API_KEY: import.meta.env.VITE_FIREBASE_API_KEY,
-    VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    VITE_FIREBASE_APP_ID: import.meta.env.VITE_FIREBASE_APP_ID,
+    VITE_FIREBASE_API_KEY: import.meta.env.VITE_FIREBASE_API_KEY ? '✅ Set' : '❌ Missing',
+    VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID ? '✅ Set' : '❌ Missing',
+    VITE_FIREBASE_APP_ID: import.meta.env.VITE_FIREBASE_APP_ID ? '✅ Set' : '❌ Missing',
   });
 }
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+let app;
+let auth;
+let db;
+let analytics;
 
-// Initialize Firebase Authentication and get a reference to the service
-export const auth = getAuth(app);
+try {
+  app = initializeApp(firebaseConfig);
+  
+  // Initialize Firebase Authentication and get a reference to the service
+  auth = getAuth(app);
+  
+  // Initialize Cloud Firestore and get a reference to the service
+  db = getFirestore(app);
+  
+  // Initialize Firebase Analytics (optional, only in browser)
+  analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
+} catch (error) {
+  console.error('❌ Error initializing Firebase:', error);
+  throw error;
+}
 
-// Initialize Cloud Firestore and get a reference to the service
-export const db = getFirestore(app);
-
-// Initialize Firebase Analytics (optional)
-export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
-
+export { auth, db, analytics };
 export default app;

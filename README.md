@@ -253,6 +253,25 @@ yarn lint
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+## Deployment
+
+### Deploy to Vercel
+
+This app is configured for easy deployment to Vercel:
+
+1. Push your code to GitHub
+2. Import your repository in [Vercel](https://vercel.com)
+3. Add environment variables in Vercel project settings
+4. Deploy!
+
+📖 **See [Complete Vercel Deployment Guide](docs/VERCEL_DEPLOYMENT.md) for detailed instructions**
+
+**Quick Checklist:**
+- [ ] Set all `VITE_FIREBASE_*` environment variables in Vercel
+- [ ] Configure Firebase Authentication providers
+- [ ] Deploy Firestore security rules
+- [ ] Test the deployed app
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
@@ -268,6 +287,7 @@ If you encounter any issues or have questions:
 ## Documentation
 
 - [Complete Firebase Setup Guide](docs/FIREBASE_DIRECT_SETUP.md) - Detailed setup instructions
+- [Vercel Deployment Guide](docs/VERCEL_DEPLOYMENT.md) - Production deployment guide
 - [Firebase Security Rules](docs/firestore-direct-access.rules) - Security configuration
 - [RBAC System Design](docs/RBAC_SYSTEM_DESIGN.md) - Role-based access control documentation
 - [Environment Template](env.example) - Environment variables template
