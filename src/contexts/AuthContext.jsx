@@ -32,8 +32,20 @@ export const AuthProvider = ({ children }) => {
   const [organizationId, setOrganizationId] = useState(null);
   const [needsRoleAssignment, setNeedsRoleAssignment] = useState(false);
 
+  // Check if Firebase is initialized - set loading to false if not
+  useEffect(() => {
+    if (!auth) {
+      console.error('⚠️  Firebase auth is not initialized. Please check environment variables.');
+      setLoading(false);
+    }
+  }, []);
+
   // Sign up with email and password
   const signup = async (email, password, displayName) => {
+    if (!auth) {
+      toast.error('Firebase is not initialized. Please check environment variables.');
+      return Promise.reject(new Error('Firebase not initialized'));
+    }
     try {
       const result = await createUserWithEmailAndPassword(auth, email, password);
       
@@ -68,6 +80,10 @@ export const AuthProvider = ({ children }) => {
 
   // Sign in with email and password (using Custom Claims)
   const signin = async (email, password) => {
+    if (!auth) {
+      toast.error('Firebase is not initialized. Please check environment variables.');
+      return Promise.reject(new Error('Firebase not initialized'));
+    }
     try {
       const result = await signInWithEmailAndPassword(auth, email, password);
       
@@ -144,6 +160,10 @@ export const AuthProvider = ({ children }) => {
 
   // Sign in with Google (using Custom Claims)
   const signInWithGoogle = async () => {
+    if (!auth) {
+      toast.error('Firebase is not initialized. Please check environment variables.');
+      return Promise.reject(new Error('Firebase not initialized'));
+    }
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
@@ -209,6 +229,10 @@ export const AuthProvider = ({ children }) => {
 
   // Sign out
   const logout = async () => {
+    if (!auth) {
+      console.warn('Firebase is not initialized. Cannot sign out.');
+      return Promise.resolve();
+    }
     try {
       await signOut(auth);
       setUserToken(null);
@@ -369,6 +393,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
+    if (!auth) {
+      console.warn('Firebase auth is not initialized. Skipping auth state listener.');
+      setLoading(false);
+      return;
+    }
+    
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
       
