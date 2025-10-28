@@ -6,19 +6,15 @@ import {
   paymentService, 
   rentService, 
   tenantService, 
-  userService 
+  userService,
+  invoiceService
 } from './firebaseService';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
 
-// Create axios instance (kept for compatibility but won't be used)
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+// NOTE: Axios instance retained only for potential future HTTP calls.
+// Current app uses Firebase services directly.
+const api = axios.create({ baseURL: API_BASE_URL });
 
 // Token management
 let authToken = null;
@@ -32,72 +28,18 @@ export const setAuthToken = (token) => {
   }
 };
 
-// Request interceptor to add auth token
-api.interceptors.request.use(
-  (config) => {
-    if (authToken) {
-      config.headers.Authorization = `Bearer ${authToken}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
+// Minimal request interceptor to attach token when present
+api.interceptors.request.use((config) => {
+  if (authToken) config.headers.Authorization = `Bearer ${authToken}`;
+  return config;
+});
 
-// Response interceptor for error handling and token refresh
-api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  async (error) => {
-    const originalRequest = error.config;
-    
-    // Handle 401 errors (token expired)
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      
-      // Try to refresh token
-      try {
-        // Get fresh token from Firebase
-        const auth = (await import('../config/firebase')).auth;
-        const currentUser = auth.currentUser;
-        
-        if (currentUser) {
-          console.log('🔄 Token expired, attempting refresh...');
-          const newToken = await currentUser.getIdToken(true);
-          
-          // Update token for future requests
-          setAuthToken(newToken);
-          
-          // Retry the original request with new token
-          originalRequest.headers.Authorization = `Bearer ${newToken}`;
-          return api(originalRequest);
-        } else {
-          // No user, redirect to login
-          console.log('❌ No user found, redirecting to login');
-          window.location.href = '/login';
-          return Promise.reject(error);
-        }
-      } catch (refreshError) {
-        console.error('Token refresh failed:', refreshError);
-        // Clear token and redirect to login
-        setAuthToken(null);
-        window.location.href = '/login';
-        return Promise.reject(error);
-      }
-    }
-    
-    const message = error.response?.data?.error || error.message || 'An error occurred';
-    
-    // Don't show toast for 401 errors (handled above)
-    if (error.response?.status !== 401) {
-      toast.error(message);
-    }
-    
-    return Promise.reject(error);
-  }
-);
+// Minimal response interceptor
+api.interceptors.response.use((r) => r, (error) => {
+  const message = error.response?.data?.error || error.message || 'An error occurred';
+  if (error.response?.status !== 401) toast.error(message);
+  return Promise.reject(error);
+});
 
 // Helper function to get current user info
 const getCurrentUserInfo = () => {
@@ -194,12 +136,39 @@ export const tenantsAPI = {
   getByProperty: (propertyId) => tenantService.getByProperty(propertyId),
 };
 
+export const invoicesAPI = {
+  getAll: () => {
+    const { userId, userRole, organizationId } = getCurrentUserInfo();
+    return invoiceService.getAll(userId, userRole, organizationId);
+  },
+  getById: (id) => invoiceService.getById(id),
+  getByRentId: (rentId) => invoiceService.getByRentId(rentId),
+  create: (data) => {
+    const { userId, userRole, organizationId } = getCurrentUserInfo();
+    return invoiceService.create(data, userId, userRole, organizationId);
+  },
+  update: (id, data) => invoiceService.update(id, data),
+  delete: (id) => invoiceService.delete(id),
+};
+
 export const usersAPI = {
   getAll: () => Promise.resolve({ data: [] }),
   getById: (id) => Promise.resolve({ data: {} }),
   updateProfile: (id, data) => Promise.resolve({ data }),
   updateRole: (id, data) => Promise.resolve({ data }),
-  getAdminDashboardStats: () => Promise.resolve({ data: {} }),
+  getAdminDashboardStats: async () => {
+    const { organizationId, userRole } = getCurrentUserInfo();
+    // If super admin, pull system-wide stats
+    if (userRole === 'super_admin') {
+      const stats = await userService.getSystemDashboardStats();
+      return { data: stats };
+    }
+    if (!organizationId) {
+      throw new Error('Organization ID is required for admin dashboard stats');
+    }
+    const stats = await userService.getAdminDashboardStats(organizationId);
+    return { data: stats };
+  },
 };
 
 export const organizationsAPI = {

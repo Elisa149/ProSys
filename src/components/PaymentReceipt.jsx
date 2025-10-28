@@ -636,7 +636,7 @@ const PaymentReceipt = ({ payment, open, onClose }) => {
                       Payment Method:
                     </Typography>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.15 }}>
-                      {['cash', 'cheque', 'credit_card', 'bank_transfer', 'mobile_money'].map((method) => (
+                      {['cash', 'cheque', 'credit_card', 'bank_transfer', 'online', 'mobile_money_mtn', 'mobile_money_airtel'].map((method) => (
                         <FormControlLabel
                           key={method}
                           control={
@@ -659,7 +659,7 @@ const PaymentReceipt = ({ payment, open, onClose }) => {
                                 fontSize: '0.6rem',
                               }}
                             >
-                              {method.replace('_', ' ')}
+                              {method === 'mobile_money_mtn' ? 'Mobile Money MTN' : method === 'mobile_money_airtel' ? 'Mobile Money Airtel' : method.replace('_', ' ')}
                             </Typography>
                           }
                           sx={{ m: 0, py: 0 }}

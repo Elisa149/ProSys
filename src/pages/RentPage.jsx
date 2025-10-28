@@ -57,7 +57,7 @@ import {
 import { format, differenceInDays } from 'date-fns';
 import toast from 'react-hot-toast';
 
-import { propertyService, rentService, paymentService } from '../services/firebaseService';
+import { propertyService, rentService, paymentService, invoiceService } from '../services/firebaseService';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import ResponsiveContainer from '../components/common/ResponsiveContainer';
@@ -65,6 +65,7 @@ import ResponsiveHeader from '../components/common/ResponsiveHeader';
 import ResponsiveTable from '../components/common/ResponsiveTable';
 import PropertySelectorDialog from '../components/PropertySelectorDialog';
 import PaymentReceipt from '../components/PaymentReceipt';
+import CorporatePaymentSlip from '../components/CorporatePaymentSlip';
 import ClearCacheButton from '../components/ClearCacheButton';
 
 // Helper functions
@@ -77,6 +78,45 @@ const formatCurrency = (amount) => {
     }).format(amount || 0);
   } catch (error) {
     return `UGX ${(amount || 0).toLocaleString()}`;
+  }
+};
+
+// Helpers to render payment listing as requested
+const formatDateTime = (date) => {
+  try {
+    const d = new Date(date);
+    return {
+      date: format(d, 'MM/dd/yyyy'),
+      time: format(d, 'hh:mm:ss a'),
+    };
+  } catch (e) {
+    return { date: '-', time: '-' };
+  }
+};
+
+const getInvoiceNumber = (payment) => {
+  try {
+    if (payment.invoiceNumber) return payment.invoiceNumber;
+    const d = new Date(payment.paymentDate || Date.now());
+    const y = format(d, 'yyyy');
+    const m = format(d, 'MM');
+    const dd = format(d, 'dd');
+    const tail = (payment.id || '').toString().slice(-4).padStart(4, '0');
+    return `INV-${y}-${m}-${dd}-${tail}`;
+  } catch (e) {
+    return 'INV-NA';
+  }
+};
+
+const getCashRef = (payment, sequenceIndex) => {
+  try {
+    const d = new Date(payment.paymentDate || Date.now());
+    const ts = format(d, 'yyMMddHHmm');
+    const rand = ((payment.id || '').toString().slice(-4) || Math.floor(Math.random() * 10000).toString()).padStart(4, '0');
+    const seq = String((sequenceIndex || 0) + 1).padStart(2, '0');
+    return `CSH-${ts}-${rand}-${seq}`;
+  } catch (e) {
+    return 'CSH-NA';
   }
 };
 
@@ -106,8 +146,11 @@ const RentPage = () => {
   const [selectedRent, setSelectedRent] = useState(null);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [lastCreatedPayment, setLastCreatedPayment] = useState(null);
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [invoiceData, setInvoiceData] = useState(null);
   
   const [newPayment, setNewPayment] = useState({
+    invoiceId: '',
     rentId: '',
     amount: '',
     paymentDate: new Date().toISOString().split('T')[0],
@@ -206,6 +249,37 @@ const RentPage = () => {
     }
   );
 
+  // Fetch invoices - USE EFFECTIVE AUTH WITH FALLBACKS
+  const { 
+    data: invoices = [],
+    isLoading: invoicesLoading,
+    error: invoicesError,
+  } = useQuery(
+    ['invoices', effectiveUserId, effectiveUserRole, effectiveOrganizationId],
+    () => {
+      console.log('🔄 Fetching invoices:', { 
+        userId: effectiveUserId, 
+        userRole: effectiveUserRole, 
+        organizationId: effectiveOrganizationId 
+      });
+      return invoiceService.getAll(effectiveUserId, effectiveUserRole, effectiveOrganizationId);
+    },
+    {
+      enabled: !!user,
+      staleTime: 0,
+      refetchOnMount: true,
+      onSuccess: (data) => {
+        console.log('✅ Invoices loaded:', data?.length || 0);
+        if (data?.length > 0) {
+          console.log('📊 Sample invoice:', data[0]);
+        }
+      },
+      onError: (err) => {
+        console.error('❌ Error fetching invoices:', err);
+      },
+    }
+  );
+
   // Fetch payments - USE EFFECTIVE AUTH WITH FALLBACKS
   const { 
     data: payments = [],
@@ -263,6 +337,7 @@ const RentPage = () => {
         console.log('✅ Payment created successfully:', newPayment);
         queryClient.invalidateQueries(['payments', user?.uid, userRole, organizationId]);
         queryClient.invalidateQueries(['rent', user?.uid, userRole, organizationId]);
+        queryClient.invalidateQueries(['invoices', user?.uid, userRole, organizationId]);
         toast.success('Payment recorded successfully!');
         setPaymentDialogOpen(false);
         
@@ -283,11 +358,11 @@ const RentPage = () => {
     }
   );
 
-  if (rentLoading || propertiesLoading || paymentsLoading) {
+  if (rentLoading || propertiesLoading || paymentsLoading || invoicesLoading) {
     return <LoadingSpinner message="Loading rent management data..." />;
   }
 
-  if (rentError || propertiesError || paymentsError) {
+  if (rentError || propertiesError || paymentsError || invoicesError) {
     return (
       <ResponsiveContainer>
         <Alert severity="error" sx={{ m: 2, mb: 2 }}>
@@ -357,6 +432,7 @@ const RentPage = () => {
   // Handle functions
   const resetPaymentForm = () => {
     setNewPayment({
+      invoiceId: '',
       rentId: '',
       amount: '',
       paymentDate: new Date().toISOString().split('T')[0],
@@ -368,13 +444,14 @@ const RentPage = () => {
   };
 
   const handleRecordPayment = () => {
-    if (!newPayment.rentId || !newPayment.amount) {
-      toast.error('Please select a rent agreement and enter amount');
+    if (!newPayment.invoiceId || !newPayment.amount) {
+      toast.error('Please select an invoice and enter amount');
       return;
     }
     
     // Only send fields that are allowed by the backend validation schema
     const paymentData = {
+      invoiceId: newPayment.invoiceId,
       rentId: newPayment.rentId,
       propertyId: selectedRent?.propertyId,
       amount: parseFloat(newPayment.amount),
@@ -687,29 +764,56 @@ const RentPage = () => {
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <Tooltip title="Generate Invoice">
+                          <IconButton 
+                            size="small"
+                            color="primary"
+                            onClick={async () => {
+                              try {
+                                // Generate invoice for this tenant
+                                const invoiceData = {
+                                  rentId: rent.id,
+                                  invoiceNumber: `INV-${format(new Date(), 'yyyyMMdd')}-${rent.id.slice(-4)}`,
+                                  tenantName: rent.tenantName,
+                                  propertyName: rent.propertyName,
+                                  spaceName: rent.spaceName,
+                                  propertyId: rent.propertyId,
+                                  totalAmount: rent.monthlyRent,
+                                  amountDue: rent.monthlyRent,
+                                  amountPaid: 0,
+                                  dueDate: rent.nextDueDate,
+                                  status: 'pending',
+                                  description: `Monthly rent for ${rent.propertyName}${rent.spaceName ? ` - ${rent.spaceName}` : ''}`,
+                                };
+                                const result = await invoiceService.create(invoiceData, effectiveUserId, effectiveUserRole, effectiveOrganizationId);
+                                if (result) {
+                                  toast.success(`Invoice generated for ${rent.tenantName}`);
+                                  queryClient.invalidateQueries(['invoices']);
+                                }
+                              } catch (error) {
+                                toast.error(`Failed to generate invoice: ${error.message}`);
+                              }
+                            }}
+                          >
+                            <Add />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="View Invoices">
+                          <IconButton 
+                            size="small"
+                            onClick={() => {
+                              navigate('/app/invoices');
+                            }}
+                          >
+                            <Receipt />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title="View Property">
                           <IconButton 
                             size="small"
                             onClick={() => navigate(`/app/properties/${rent.propertyId}`)}
                           >
                             <Visibility />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Record Payment">
-                          <IconButton 
-                            size="small" 
-                            color="primary"
-                            onClick={() => {
-                              setSelectedRent(rent);
-                              setNewPayment(prev => ({
-                                ...prev,
-                                rentId: rent.id,
-                                amount: rent.outstandingAmount || rent.monthlyRent,
-                              }));
-                              setPaymentDialogOpen(true);
-                            }}
-                          >
-                            <Payment />
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Manage Space">
@@ -735,12 +839,11 @@ const RentPage = () => {
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell><strong>Date</strong></TableCell>
-                <TableCell><strong>Tenant</strong></TableCell>
-                <TableCell><strong>Property</strong></TableCell>
-                <TableCell><strong>Amount</strong></TableCell>
-                <TableCell><strong>Method</strong></TableCell>
-                <TableCell><strong>Transaction ID</strong></TableCell>
+                <TableCell><strong>Payment Details</strong></TableCell>
+                <TableCell><strong>Invoice & Supplier</strong></TableCell>
+                <TableCell><strong>Amount & Method</strong></TableCell>
+                <TableCell><strong>Installment</strong></TableCell>
+                <TableCell><strong>Payment Date</strong></TableCell>
                 <TableCell><strong>Actions</strong></TableCell>
               </TableRow>
             </TableHead>
@@ -756,51 +859,67 @@ const RentPage = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                payments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell>
-                      <Typography variant="body2">
-                        {payment.paymentDate && format(new Date(payment.paymentDate), 'MMM dd, yyyy')}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" fontWeight="medium">
-                        {payment.tenantName}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2">
-                        {payment.propertyName}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" fontWeight="bold" color="success.main">
-                        {formatCurrency(payment.amount)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={payment.paymentMethod?.replace('_', ' ') || 'cash'}
-                        size="small"
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                        {payment.transactionId || '-'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', gap: 0.5 }}>
-                        <Tooltip title="View Details">
-                          <IconButton size="small">
-                            <Visibility />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    </TableCell>
-                  </TableRow>
-                ))
+                payments.map((payment, idx) => {
+                  const cashRef = getCashRef(payment, idx);
+                  const invoiceNum = getInvoiceNumber(payment);
+                  const supplier = payment.tenantName || payment.propertyName || '—';
+                  const dt = formatDateTime(payment.paymentDate);
+                  return (
+                    <TableRow key={payment.id}>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                          {cashRef}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Paid by: {user?.displayName || 'PM ADMIN'} ({payment.userId || effectiveUserId || '—'})
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                          {invoiceNum}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {supplier}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight="bold" color="success.main">
+                          {formatCurrency(payment.amount)}
+                        </Typography>
+                        <Chip
+                          label={payment.paymentMethod?.replace('_', ' ') || 'cash'}
+                          size="small"
+                          variant="outlined"
+                          sx={{ mt: 0.5 }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          Payment #{idx + 1}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{dt.date}</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">{dt.time}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          <Tooltip title="View">
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                setLastCreatedPayment(payment);
+                                setReceiptDialogOpen(true);
+                              }}
+                            >
+                              <Visibility />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -918,6 +1037,15 @@ const RentPage = () => {
         onClose={() => setReceiptDialogOpen(false)}
       />
 
+      {/* Invoice Dialog */}
+      <CorporatePaymentSlip
+        payment={invoiceData}
+        property={null}
+        tenant={null}
+        open={invoiceDialogOpen}
+        onClose={() => setInvoiceDialogOpen(false)}
+      />
+
       {/* Record Payment Dialog */}
       <Dialog open={paymentDialogOpen} onClose={() => setPaymentDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Record Payment</DialogTitle>
@@ -932,10 +1060,13 @@ const RentPage = () => {
                   onChange={(e) => {
                     const selectedRentRecord = enrichedRentRecords.find(r => r.id === e.target.value);
                     setSelectedRent(selectedRentRecord);
+                    // Find matching invoice for this rent agreement
+                    const matchingInvoice = invoices.find(inv => inv.rentId === e.target.value && inv.status !== 'paid');
                     setNewPayment(prev => ({ 
                       ...prev, 
                       rentId: e.target.value,
-                      amount: selectedRentRecord?.monthlyRent || ''
+                      invoiceId: matchingInvoice?.id || '',
+                      amount: matchingInvoice?.amountDue || selectedRentRecord?.monthlyRent || ''
                     }));
                   }}
                 >
@@ -944,6 +1075,32 @@ const RentPage = () => {
                       {rent.tenantName} - {rent.propertyName} ({rent.spaceName || 'N/A'})
                     </MenuItem>
                   ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Invoice *</InputLabel>
+                <Select
+                  value={newPayment.invoiceId}
+                  label="Invoice *"
+                  onChange={(e) => {
+                    const selectedInvoice = invoices.find(inv => inv.id === e.target.value);
+                    setNewPayment(prev => ({ 
+                      ...prev, 
+                      invoiceId: e.target.value,
+                      amount: selectedInvoice?.amountDue || ''
+                    }));
+                  }}
+                  disabled={!newPayment.rentId}
+                >
+                  {invoices
+                    .filter(inv => inv.rentId === newPayment.rentId && inv.status !== 'paid')
+                    .map(invoice => (
+                      <MenuItem key={invoice.id} value={invoice.id}>
+                        {invoice.invoiceNumber} - {formatCurrency(invoice.amountDue)} due
+                      </MenuItem>
+                    ))}
                 </Select>
               </FormControl>
             </Grid>
@@ -982,6 +1139,8 @@ const RentPage = () => {
                   <MenuItem value="check">Check</MenuItem>
                   <MenuItem value="online">Online Payment</MenuItem>
                   <MenuItem value="credit_card">Credit Card</MenuItem>
+                  <MenuItem value="mobile_money_mtn">Mobile Money MTN</MenuItem>
+                  <MenuItem value="mobile_money_airtel">Mobile Money Airtel</MenuItem>
                 </Select>
               </FormControl>
             </Grid>

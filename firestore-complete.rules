@@ -143,8 +143,12 @@ service cloud.firestore {
       allow read, write, delete: if (isOrgAdmin() && belongsToOrganization(resource.data.organizationId)) ||
                                  (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
       
-      // Property manager can read/write assigned properties
-      allow read, write: if (isPropertyManager() && request.auth.uid in resource.data.assignedManagers) ||
+      // Property manager can read all properties in their organization (for dashboard access)
+      allow read: if (isPropertyManager() && belongsToOrganization(resource.data.organizationId)) ||
+                 (isPropertyManagerFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Property manager can write/delete only assigned properties
+      allow write, delete: if (isPropertyManager() && request.auth.uid in resource.data.assignedManagers) ||
                          (isPropertyManagerFromFirestore() && request.auth.uid in resource.data.assignedManagers);
       
       // Financial viewer can read properties in their organization
@@ -199,8 +203,12 @@ service cloud.firestore {
       allow read, write, delete: if (isOrgAdmin() && belongsToOrganization(resource.data.organizationId)) ||
                                (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
       
-      // Property manager can read/write payments for assigned properties
-      allow read, write: if (isPropertyManager() && request.auth.uid in resource.data.propertyManagerIds) ||
+      // Property manager can read all payments in their organization (for dashboard)
+      allow read: if (isPropertyManager() && belongsToOrganization(resource.data.organizationId)) ||
+                 (isPropertyManagerFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Property manager can write/delete only their own assigned payments
+      allow write, delete: if (isPropertyManager() && request.auth.uid in resource.data.propertyManagerIds) ||
                          (isPropertyManagerFromFirestore() && request.auth.uid in resource.data.propertyManagerIds);
       
       // Financial viewer can read payments in their organization
@@ -208,6 +216,37 @@ service cloud.firestore {
                  (isFinancialViewerFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
       
       // Allow creating payments
+      allow create: if isSuperAdmin() || isSuperAdminFromFirestore() ||
+                   (isOrgAdmin() && belongsToOrganization(request.resource.data.organizationId)) ||
+                   (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(request.resource.data.organizationId)) ||
+                   (isPropertyManager() && request.auth.uid in request.resource.data.propertyManagerIds) ||
+                   (isPropertyManagerFromFirestore() && request.auth.uid in request.resource.data.propertyManagerIds);
+    }
+    
+    // ===============================================
+    // INVOICES
+    // ===============================================
+    match /invoices/{invoiceId} {
+      // Super admin has full access to all invoices
+      allow read, write, delete: if isSuperAdmin() || isSuperAdminFromFirestore();
+      
+      // Org admin can read/write invoices in their organization
+      allow read, write, delete: if (isOrgAdmin() && belongsToOrganization(resource.data.organizationId)) ||
+                               (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Property manager can read all invoices in their organization
+      allow read: if (isPropertyManager() && belongsToOrganization(resource.data.organizationId)) ||
+                 (isPropertyManagerFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Property manager can write/delete only their own assigned invoices
+      allow write, delete: if (isPropertyManager() && request.auth.uid in resource.data.propertyManagerIds) ||
+                         (isPropertyManagerFromFirestore() && request.auth.uid in resource.data.propertyManagerIds);
+      
+      // Financial viewer can read invoices in their organization
+      allow read: if (isFinancialViewer() && belongsToOrganization(resource.data.organizationId)) ||
+                 (isFinancialViewerFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Allow creating invoices
       allow create: if isSuperAdmin() || isSuperAdminFromFirestore() ||
                    (isOrgAdmin() && belongsToOrganization(request.resource.data.organizationId)) ||
                    (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(request.resource.data.organizationId)) ||
@@ -227,8 +266,12 @@ service cloud.firestore {
       allow read, write, delete: if (isOrgAdmin() && belongsToOrganization(resource.data.organizationId)) ||
                                 (isOrgAdminFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
       
-      // Property manager can read/write rent records for assigned properties
-      allow read, write: if (isPropertyManager() && request.auth.uid in resource.data.propertyManagerIds) ||
+      // Property manager can read all rent records in their organization (for dashboard)
+      allow read: if (isPropertyManager() && belongsToOrganization(resource.data.organizationId)) ||
+                 (isPropertyManagerFromFirestore() && belongsToOrganizationFromFirestore(resource.data.organizationId));
+      
+      // Property manager can write/delete only their own assigned rent records
+      allow write, delete: if (isPropertyManager() && request.auth.uid in resource.data.propertyManagerIds) ||
                          (isPropertyManagerFromFirestore() && request.auth.uid in resource.data.propertyManagerIds);
       
       // Financial viewer can read rent records in their organization

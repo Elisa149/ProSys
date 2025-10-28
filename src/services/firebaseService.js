@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import toast from 'react-hot-toast';
+import { format } from 'date-fns';
 
 // Role permissions mapping (same as in Cloud Functions)
 const ROLE_PERMISSIONS = {
@@ -50,6 +51,9 @@ const ROLE_PERMISSIONS = {
     'rent:read:all',
     'rent:write:all',
     'rent:create:all',
+    'invoices:read:all',
+    'invoices:write:all',
+    'invoices:create:all',
     'analytics:read:all',
   ],
   
@@ -67,6 +71,8 @@ const ROLE_PERMISSIONS = {
     'payments:write:organization',
     'payments:create:organization',
     'payments:delete:organization',
+    'invoices:read:organization',
+    'invoices:write:organization',
     'reports:read:organization',
     'reports:write:organization',
     'organization:settings:write',
@@ -84,6 +90,8 @@ const ROLE_PERMISSIONS = {
     'payments:read:assigned',
     'payments:write:assigned',
     'payments:create:assigned',
+    'invoices:read:assigned',
+    'invoices:write:assigned',
     'reports:read:assigned',
     'rent:read:assigned',
     'rent:write:assigned',
@@ -94,6 +102,7 @@ const ROLE_PERMISSIONS = {
     'reports:read:organization',
     'properties:read:organization',
     'payments:read:organization',
+    'invoices:read:organization',
     'analytics:read:organization',
   ],
 };
@@ -296,6 +305,213 @@ export const userService = {
       return { success: true };
     } catch (error) {
       handleFirebaseError(error, 'update user status');
+    }
+  },
+
+  // Get admin dashboard statistics
+  getAdminDashboardStats: async (organizationId) => {
+    try {
+      // Fetch all properties
+      const propertiesSnapshot = await getDocs(query(
+        collection(db, 'properties'),
+        where('organizationId', '==', organizationId)
+      ));
+      const properties = propertiesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      // Fetch all payments
+      const paymentsSnapshot = await getDocs(query(
+        collection(db, 'payments'),
+        where('organizationId', '==', organizationId),
+        orderBy('createdAt', 'desc')
+      ));
+      const payments = paymentsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(doc.data().createdAt)
+      }));
+
+      // Fetch users by status
+      const pendingUsers = await getDocs(query(
+        collection(db, 'users'),
+        where('status', '==', 'pending')
+      ));
+
+      // Fetch active users
+      const activeUsersSnapshot = await getDocs(query(
+        collection(db, 'users'),
+        where('status', '==', 'active')
+      ));
+
+      // Calculate total revenue
+      const totalRevenue = payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+
+      // Calculate this month's revenue
+      const now = new Date();
+      const thisMonth = now.getMonth();
+      const thisYear = now.getFullYear();
+      const thisMonthPayments = payments.filter(payment => {
+        const paymentDate = payment.createdAt;
+        return paymentDate && paymentDate.getMonth() === thisMonth && paymentDate.getFullYear() === thisYear;
+      });
+      const thisMonthRevenue = thisMonthPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+      
+      // Calculate last month's revenue for growth
+      const lastMonthPayments = payments.filter(payment => {
+        const paymentDate = payment.createdAt;
+        const lastMonth = thisMonth > 0 ? thisMonth - 1 : 11;
+        const lastMonthYear = thisMonth > 0 ? thisYear : thisYear - 1;
+        return paymentDate && paymentDate.getMonth() === lastMonth && paymentDate.getFullYear() === lastMonthYear;
+      });
+      const lastMonthRevenue = lastMonthPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+      
+      const monthlyGrowth = lastMonthRevenue > 0 
+        ? Math.round(((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100) 
+        : 0;
+
+      // Calculate collection rate
+      const totalProperties = properties.length;
+      const collectionRate = payments.length > 0 ? 85 : 0; // Simplified
+      const occupancyRate = properties.length > 0 ? 75 : 0; // Simplified
+
+      // Get pending approvals
+      const pendingApprovals = pendingUsers.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })).slice(0, 5);
+
+      // Get top properties
+      const topProperties = properties.slice(0, 5).map(property => ({
+        name: property.name,
+        revenue: property.buildingDetails || property.landDetails ? 5000 : 0,
+        occupancy: 80,
+        trend: 'up'
+      }));
+
+      // Get recent activities (last 5 payments)
+      const recentActivities = payments.slice(0, 5).map(payment => ({
+        id: payment.id,
+        message: `Payment of ${payment.amount} received from ${payment.tenantName || 'Unknown'}`,
+        type: 'payment',
+        status: 'success',
+        time: payment.createdAt
+      }));
+
+      return {
+        stats: {
+          totalRevenue,
+          monthlyGrowth,
+          totalProperties,
+          activeUsers: activeUsersSnapshot.docs.length,
+          pendingApprovals: pendingUsers.docs.length,
+          collectionRate,
+          occupancyRate
+        },
+        recentActivities,
+        pendingApprovals,
+        topProperties
+      };
+    } catch (error) {
+      handleFirebaseError(error, 'get admin dashboard stats');
+      throw error;
+    }
+  },
+
+  // Get system-wide dashboard statistics (super admin)
+  getSystemDashboardStats: async () => {
+    try {
+      // Fetch all properties (no org filter)
+      const propertiesSnapshot = await getDocs(
+        query(
+          collection(db, 'properties'),
+          orderBy('createdAt', 'desc')
+        )
+      );
+      const properties = propertiesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      // Fetch all payments (no org filter)
+      const paymentsSnapshot = await getDocs(
+        query(
+          collection(db, 'payments'),
+          orderBy('createdAt', 'desc')
+        )
+      );
+      const payments = paymentsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(doc.data().createdAt)
+      }));
+
+      // Fetch users by status
+      const pendingUsers = await getDocs(query(
+        collection(db, 'users'),
+        where('status', '==', 'pending')
+      ));
+      const activeUsersSnapshot = await getDocs(query(
+        collection(db, 'users'),
+        where('status', '==', 'active')
+      ));
+
+      // Calculate totals
+      const totalRevenue = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+      const now = new Date();
+      const thisMonth = now.getMonth();
+      const thisYear = now.getFullYear();
+      const thisMonthPayments = payments.filter(p => p.createdAt && p.createdAt.getMonth() === thisMonth && p.createdAt.getFullYear() === thisYear);
+      const thisMonthRevenue = thisMonthPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      const lastMonth = thisMonth > 0 ? thisMonth - 1 : 11;
+      const lastMonthYear = thisMonth > 0 ? thisYear : thisYear - 1;
+      const lastMonthPayments = payments.filter(p => p.createdAt && p.createdAt.getMonth() === lastMonth && p.createdAt.getFullYear() === lastMonthYear);
+      const lastMonthRevenue = lastMonthPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+      const monthlyGrowth = lastMonthRevenue > 0
+        ? Math.round(((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100)
+        : 0;
+
+      // Simplified placeholders for rates
+      const collectionRate = payments.length > 0 ? 85 : 0;
+      const occupancyRate = properties.length > 0 ? 75 : 0;
+
+      // Top properties (simple placeholder ranking)
+      const topProperties = properties.slice(0, 5).map(property => ({
+        name: property.name,
+        revenue: property.buildingDetails || property.landDetails ? 5000 : 0,
+        occupancy: 80,
+        trend: 'up'
+      }));
+
+      // Recent activities (last 5 payments)
+      const recentActivities = payments.slice(0, 5).map(payment => ({
+        id: payment.id,
+        message: `Payment of ${payment.amount} received from ${payment.tenantName || 'Unknown'}`,
+        type: 'payment',
+        status: 'success',
+        time: payment.createdAt
+      }));
+
+      return {
+        stats: {
+          totalRevenue,
+          monthlyGrowth,
+          totalProperties: properties.length,
+          activeUsers: activeUsersSnapshot.docs.length,
+          pendingApprovals: pendingUsers.docs.length,
+          collectionRate,
+          occupancyRate
+        },
+        recentActivities,
+        pendingApprovals: pendingUsers.docs.slice(0, 5).map(doc => ({ id: doc.id, ...doc.data() })),
+        topProperties
+      };
+    } catch (error) {
+      handleFirebaseError(error, 'get system dashboard stats');
+      throw error;
     }
   },
 };
@@ -648,14 +864,19 @@ export const rentService = {
         orderBy('createdAt', 'desc')
       );
       const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        startDate: convertTimestamp(doc.data().startDate),
-        endDate: convertTimestamp(doc.data().endDate),
-        createdAt: convertTimestamp(doc.data().createdAt),
-        updatedAt: convertTimestamp(doc.data().updatedAt),
-      }));
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          startDate: convertTimestamp(data.startDate),
+          endDate: convertTimestamp(data.endDate),
+          leaseStart: convertTimestamp(data.leaseStart),
+          leaseEnd: convertTimestamp(data.leaseEnd),
+          createdAt: convertTimestamp(data.createdAt),
+          updatedAt: convertTimestamp(data.updatedAt),
+        };
+      });
     } catch (error) {
       handleFirebaseError(error, 'get rent records by property');
     }
@@ -705,6 +926,332 @@ export const rentService = {
       return { success: true };
     } catch (error) {
       handleFirebaseError(error, 'delete rent record');
+    }
+  },
+};
+
+// ==================== PAYMENT MANAGEMENT ====================
+
+// Helper function to generate or update invoice based on payment
+const generateOrUpdateInvoice = async (paymentData, paymentId, userId, organizationId) => {
+  try {
+    const { rentId, amount, propertyId, tenantName, propertyName } = paymentData;
+    
+    // Check if an invoice already exists for this rent record
+    const q = query(
+      collection(db, 'invoices'),
+      where('rentId', '==', rentId),
+      orderBy('invoiceDate', 'desc')
+    );
+    const existingInvoices = await getDocs(q);
+    const invoices = existingInvoices.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    let invoiceToUpdate = invoices.find(inv => 
+      inv.status === 'pending' || inv.status === 'partially_paid'
+    );
+    
+    if (!invoiceToUpdate) {
+      // Get rent record to get monthly amount
+      const rentRecord = await getDoc(doc(db, 'rent', rentId));
+      const rentData = rentRecord.data();
+      
+      // Create new invoice
+      const invoiceData = {
+        invoiceNumber: `INV-${Date.now()}`,
+        rentId: rentId,
+        propertyId: propertyId,
+        propertyName: propertyName,
+        tenantName: tenantName,
+        invoiceDate: serverTimestamp(),
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        totalAmount: rentData.monthlyRent || amount,
+        amountPaid: amount,
+        amountDue: (rentData.monthlyRent || amount) - amount,
+        status: amount >= (rentData.monthlyRent || amount) ? 'paid' : amount > 0 ? 'partially_paid' : 'pending',
+        paymentIds: [paymentId],
+        description: `Monthly rent for ${propertyName}`,
+        userId: userId,
+        organizationId: organizationId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      
+      await addDoc(collection(db, 'invoices'), invoiceData);
+    } else {
+      // Update existing invoice with new payment
+      const invoiceRef = doc(db, 'invoices', invoiceToUpdate.id);
+      const updatedAmountPaid = (invoiceToUpdate.amountPaid || 0) + amount;
+      const updatedAmountDue = invoiceToUpdate.totalAmount - updatedAmountPaid;
+      const newStatus = updatedAmountDue <= 0 ? 'paid' : updatedAmountPaid > 0 ? 'partially_paid' : 'pending';
+      
+      await updateDoc(invoiceRef, {
+        amountPaid: updatedAmountPaid,
+        amountDue: updatedAmountDue,
+        status: newStatus,
+        paymentIds: [...(invoiceToUpdate.paymentIds || []), paymentId],
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    console.error('Error generating/updating invoice:', error);
+    throw error;
+  }
+};
+
+// ==================== INVOICE MANAGEMENT ====================
+
+export const invoiceService = {
+  // Get all invoices (role-based access)
+  getAll: async (userId, userRole = null, organizationId = null) => {
+    try {
+      let q;
+      
+      // Temporary: Query without orderBy until index is built
+      if (userRole === 'super_admin') {
+        q = query(collection(db, 'invoices'));
+      } else if (userRole === 'org_admin' && organizationId) {
+        q = query(
+          collection(db, 'invoices'),
+          where('organizationId', '==', organizationId)
+        );
+      } else if (userRole === 'property_manager' && organizationId) {
+        q = query(
+          collection(db, 'invoices'),
+          where('organizationId', '==', organizationId)
+        );
+      } else {
+        q = query(collection(db, 'invoices'), where('userId', '==', userId));
+      }
+      
+      const snapshot = await getDocs(q);
+      
+      // Sort by createdAt in descending order after fetching
+      // This is a temporary workaround until the Firestore index is built
+      const sortedDocs = snapshot.docs.sort((a, b) => {
+        const dateA = a.data().createdAt?.toDate?.() || new Date(a.data().createdAt);
+        const dateB = b.data().createdAt?.toDate?.() || new Date(b.data().createdAt);
+        return dateB - dateA;
+      });
+      
+      return sortedDocs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        dueDate: convertTimestamp(doc.data().dueDate),
+        invoiceDate: convertTimestamp(doc.data().invoiceDate),
+        createdAt: convertTimestamp(doc.data().createdAt),
+        updatedAt: convertTimestamp(doc.data().updatedAt),
+      }));
+    } catch (error) {
+      handleFirebaseError(error, 'get invoices');
+      return [];
+    }
+  },
+
+  // Get invoice by ID
+  getById: async (invoiceId) => {
+    try {
+      const invoiceDoc = await getDoc(doc(db, 'invoices', invoiceId));
+      if (invoiceDoc.exists()) {
+        const data = invoiceDoc.data();
+        return {
+          id: invoiceDoc.id,
+          ...data,
+          dueDate: convertTimestamp(data.dueDate),
+          invoiceDate: convertTimestamp(data.invoiceDate),
+          createdAt: convertTimestamp(data.createdAt),
+          updatedAt: convertTimestamp(data.updatedAt),
+        };
+      }
+      return null;
+    } catch (error) {
+      handleFirebaseError(error, 'get invoice');
+    }
+  },
+
+  // Get invoices by rent record (for a specific space/tenant)
+  getByRentId: async (rentId) => {
+    try {
+      // Temporary: Query without orderBy until index is built
+      const q = query(
+        collection(db, 'invoices'),
+        where('rentId', '==', rentId)
+      );
+      const snapshot = await getDocs(q);
+      
+      // Sort by invoiceDate in descending order after fetching
+      const sortedDocs = snapshot.docs.sort((a, b) => {
+        const dateA = a.data().invoiceDate?.toDate?.() || new Date(a.data().invoiceDate);
+        const dateB = b.data().invoiceDate?.toDate?.() || new Date(b.data().invoiceDate);
+        return dateB - dateA;
+      });
+      
+      return sortedDocs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        dueDate: convertTimestamp(doc.data().dueDate),
+        invoiceDate: convertTimestamp(doc.data().invoiceDate),
+        createdAt: convertTimestamp(doc.data().createdAt),
+        updatedAt: convertTimestamp(doc.data().updatedAt),
+      }));
+    } catch (error) {
+      handleFirebaseError(error, 'get invoices by rent');
+      return [];
+    }
+  },
+
+  // Create invoice
+  create: async (invoiceData, userId, userRole = null, organizationId = null) => {
+    try {
+      const data = {
+        ...invoiceData,
+        userId,
+        organizationId: organizationId || invoiceData.organizationId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      
+      // Remove undefined values to avoid Firestore errors
+      const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([_, value]) => value !== undefined)
+      );
+      
+      const docRef = await addDoc(collection(db, 'invoices'), cleanData);
+      toast.success('Invoice created successfully');
+      return { id: docRef.id, success: true };
+    } catch (error) {
+      handleFirebaseError(error, 'create invoice');
+    }
+  },
+
+  // Update invoice (e.g., when payment is received)
+  update: async (invoiceId, data) => {
+    try {
+      const invoiceRef = doc(db, 'invoices', invoiceId);
+      const updateData = {
+        ...data,
+        updatedAt: serverTimestamp(),
+      };
+      await updateDoc(invoiceRef, updateData);
+      toast.success('Invoice updated successfully');
+      return { success: true };
+    } catch (error) {
+      handleFirebaseError(error, 'update invoice');
+    }
+  },
+
+  // Delete invoice
+  delete: async (invoiceId) => {
+    try {
+      await deleteDoc(doc(db, 'invoices', invoiceId));
+      toast.success('Invoice deleted successfully');
+      return { success: true };
+    } catch (error) {
+      handleFirebaseError(error, 'delete invoice');
+    }
+  },
+
+  // Auto-generate monthly invoices for active rent agreements
+  generateMonthlyInvoices: async (userId, userRole = null, organizationId = null) => {
+    try {
+      console.log('📅 Generating monthly invoices...');
+      
+      // Get all active rent records
+      const activeRents = await rentService.getAll(userId, userRole, organizationId);
+      
+      const today = new Date();
+      const currentMonth = today.getMonth();
+      const currentYear = today.getFullYear();
+      
+      const generatedInvoices = [];
+      
+      for (const rent of activeRents) {
+        if (rent.status !== 'active') continue;
+        
+        // Check if invoice already exists for this month
+        const existingInvoices = await invoiceService.getByRentId(rent.id);
+        const hasCurrentMonthInvoice = existingInvoices.some(inv => {
+          const invDate = new Date(inv.invoiceDate);
+          return invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear;
+        });
+        
+        if (hasCurrentMonthInvoice) {
+          console.log(`⏭️  Skipping ${rent.tenantName} - invoice already exists for current month`);
+          continue;
+        }
+        
+        // Generate invoice number
+        const invoiceNumber = `INV-${format(new Date(), 'yyyyMMdd')}-${rent.id.slice(-4)}`;
+        
+        // Calculate due date (typically end of month or custom day)
+        const dueDate = new Date(currentYear, currentMonth + 1, rent.paymentDueDate || 1);
+        
+        // Create invoice
+        const invoiceData = {
+          invoiceNumber,
+          rentId: rent.id,
+          propertyId: rent.propertyId || null,
+          propertyName: rent.propertyName || 'Unknown Property',
+          spaceName: rent.spaceName || null,
+          tenantId: rent.tenantId || null,
+          tenantName: rent.tenantName || 'Unknown Tenant',
+          invoiceDate: new Date(),
+          dueDate: dueDate,
+          totalAmount: rent.monthlyRent || 0,
+          amountPaid: 0,
+          amountDue: rent.monthlyRent || 0,
+          status: 'pending',
+          paymentIds: [],
+          description: `Monthly rent for ${rent.propertyName || 'Unknown Property'}${rent.spaceName ? ` - ${rent.spaceName}` : ''}`,
+          userId: userId,
+          organizationId: organizationId || rent.organizationId || null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        
+        // Remove undefined values to avoid Firestore errors
+        const cleanInvoiceData = Object.fromEntries(
+          Object.entries(invoiceData).filter(([_, value]) => value !== undefined)
+        );
+        
+        const result = await invoiceService.create(cleanInvoiceData, userId, userRole, organizationId);
+        if (result) {
+          generatedInvoices.push({ ...invoiceData, id: result.id });
+        }
+      }
+      
+      if (generatedInvoices.length > 0) {
+        toast.success(`Generated ${generatedInvoices.length} monthly invoices`);
+      }
+      
+      return generatedInvoices;
+    } catch (error) {
+      console.error('Error generating monthly invoices:', error);
+      handleFirebaseError(error, 'generate monthly invoices');
+      return [];
+    }
+  },
+
+  // Get invoice status summary
+  getStatusSummary: async (userId, userRole = null, organizationId = null) => {
+    try {
+      const invoices = await invoiceService.getAll(userId, userRole, organizationId);
+      
+      return {
+        total: invoices.length,
+        pending: invoices.filter(inv => inv.status === 'pending').length,
+        partiallyPaid: invoices.filter(inv => inv.status === 'partially_paid').length,
+        paid: invoices.filter(inv => inv.status === 'paid').length,
+        overdue: invoices.filter(inv => inv.status === 'pending' && new Date(inv.dueDate) < new Date()).length,
+        totalAmount: invoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0),
+        totalPaid: invoices.reduce((sum, inv) => sum + (inv.amountPaid || 0), 0),
+        totalDue: invoices.reduce((sum, inv) => sum + (inv.amountDue || 0), 0),
+      };
+    } catch (error) {
+      console.error('Error getting invoice status summary:', error);
+      return null;
     }
   },
 };
@@ -843,7 +1390,7 @@ export const paymentService = {
     }
   },
 
-  // Create payment
+  // Create payment and update associated invoice
   create: async (paymentData, userId, userRole = null, organizationId = null) => {
     try {
       const data = prepareDataForFirestore({
@@ -856,6 +1403,30 @@ export const paymentService = {
       });
       
       const docRef = await addDoc(collection(db, 'payments'), data);
+      
+      // If there's an associated invoice, update it
+      if (paymentData.invoiceId) {
+        try {
+          const invoice = await invoiceService.getById(paymentData.invoiceId);
+          if (invoice) {
+            const updatedAmountPaid = (invoice.amountPaid || 0) + paymentData.amount;
+            const updatedAmountDue = invoice.totalAmount - updatedAmountPaid;
+            const newStatus = updatedAmountDue <= 0 ? 'paid' : updatedAmountPaid > 0 ? 'partially_paid' : 'pending';
+            
+            await invoiceService.update(paymentData.invoiceId, {
+              amountPaid: updatedAmountPaid,
+              amountDue: updatedAmountDue,
+              status: newStatus,
+              paymentIds: [...(invoice.paymentIds || []), docRef.id],
+              updatedAt: new Date(),
+            });
+          }
+        } catch (invoiceError) {
+          console.error('Invoice update failed:', invoiceError);
+          // Don't fail the payment if invoice update fails
+        }
+      }
+      
       toast.success('Payment recorded successfully');
       return { id: docRef.id, success: true };
     } catch (error) {
@@ -890,36 +1461,260 @@ export const paymentService = {
     }
   },
 
-  // Get dashboard summary
-  getDashboardSummary: async (userId) => {
+  // Get dashboard summary - Comprehensive data from properties and payments
+  getDashboardSummary: async (userId, userRole = null, organizationId = null) => {
     try {
-      const q = query(
-        collection(db, 'payments'),
-        where('userId', '==', userId)
-      );
-      const snapshot = await getDocs(q);
+      console.log('📊 Fetching dashboard summary with:', { userId, userRole, organizationId });
       
-      const payments = snapshot.docs.map(doc => doc.data());
+      // Build query based on RBAC
+      let propertiesQuery;
+      if (userRole === 'super_admin') {
+        // Super admin sees all
+        propertiesQuery = query(
+          collection(db, 'properties'),
+          orderBy('createdAt', 'desc')
+        );
+      } else if (userRole === 'org_admin' && organizationId) {
+        // Org admin sees organization properties
+        propertiesQuery = query(
+          collection(db, 'properties'),
+          where('organizationId', '==', organizationId),
+          orderBy('createdAt', 'desc')
+        );
+      } else if (userRole === 'property_manager' && organizationId) {
+        // Property manager sees organization properties
+        propertiesQuery = query(
+          collection(db, 'properties'),
+          where('organizationId', '==', organizationId),
+          orderBy('createdAt', 'desc')
+        );
+      } else {
+        // Default: user's properties
+        propertiesQuery = query(
+          collection(db, 'properties'),
+          where('userId', '==', userId),
+          orderBy('createdAt', 'desc')
+        );
+      }
       
-      const totalAmount = payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
-      const thisMonth = new Date().getMonth() + 1;
-      const thisYear = new Date().getFullYear();
+      const propertiesSnapshot = await getDocs(propertiesQuery);
+      const properties = propertiesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
       
-      const thisMonthPayments = payments.filter(payment => 
-        payment.month === thisMonth && payment.year === thisYear
-      );
+      console.log(`📊 Fetched ${properties.length} properties`);
+
+      // Calculate total properties and spaces
+      const totalProperties = properties.length;
+      const totalSpaces = properties.reduce((total, property) => {
+        if (property.type === 'building' && property.buildingDetails?.floors) {
+          return total + property.buildingDetails.floors.reduce((floorTotal, floor) => {
+            return floorTotal + (floor.spaces?.length || 0);
+          }, 0);
+        }
+        if (property.type === 'land' && property.landDetails?.squatters) {
+          return total + property.landDetails.squatters.length;
+        }
+        return total;
+      }, 0);
+
+      // Fetch all payments based on RBAC
+      let paymentsQuery;
+      if (userRole === 'super_admin') {
+        // Super admin sees all payments
+        paymentsQuery = query(
+          collection(db, 'payments'),
+          orderBy('createdAt', 'desc')
+        );
+      } else if (userRole === 'org_admin' && organizationId) {
+        // Org admin sees organization payments
+        paymentsQuery = query(
+          collection(db, 'payments'),
+          where('organizationId', '==', organizationId),
+          orderBy('createdAt', 'desc')
+        );
+      } else if (userRole === 'property_manager' && organizationId) {
+        // Property manager sees organization payments
+        paymentsQuery = query(
+          collection(db, 'payments'),
+          where('organizationId', '==', organizationId),
+          orderBy('createdAt', 'desc')
+        );
+      } else {
+        // Default: user's payments
+        paymentsQuery = query(
+          collection(db, 'payments'),
+          where('userId', '==', userId),
+          orderBy('createdAt', 'desc')
+        );
+      }
       
-      const thisMonthAmount = thisMonthPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+      const paymentsSnapshot = await getDocs(paymentsQuery);
+      const payments = paymentsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(doc.data().createdAt)
+      }));
       
-      return {
-        totalPayments: payments.length,
-        totalAmount,
-        thisMonthPayments: thisMonthPayments.length,
-        thisMonthAmount,
-        recentPayments: payments.slice(0, 5), // Last 5 payments
+      console.log(`📊 Fetched ${payments.length} payments`);
+
+      // Get current date info
+      const now = new Date();
+      const thisMonth = now.getMonth();
+      const thisYear = now.getFullYear();
+      
+      // Calculate expected monthly rent from properties
+      const expectedMonthlyRent = properties.reduce((total, property) => {
+        if (property.type === 'building' && property.buildingDetails?.floors) {
+          return total + property.buildingDetails.floors.reduce((floorTotal, floor) => {
+            return floorTotal + (floor.spaces?.reduce((spaceTotal, space) => 
+              spaceTotal + (space.monthlyRent || 0), 0) || 0);
+          }, 0);
+        }
+        if (property.type === 'land' && property.landDetails?.squatters) {
+          return total + property.landDetails.squatters.reduce((squatterTotal, squatter) => 
+            squatterTotal + (squatter.monthlyPayment || 0), 0);
+        }
+        return total;
+      }, 0);
+
+      // Filter payments by month
+      const filterPaymentsByMonth = (payments, month, year) => {
+        return payments.filter(payment => {
+          const paymentDate = payment.createdAt;
+          return paymentDate && paymentDate.getMonth() === month && paymentDate.getFullYear() === year;
+        });
       };
+
+      const thisMonthPayments = filterPaymentsByMonth(payments, thisMonth, thisYear);
+      const lastMonthPayments = thisMonth > 0 
+        ? filterPaymentsByMonth(payments, thisMonth - 1, thisYear)
+        : filterPaymentsByMonth(payments, 11, thisYear - 1);
+
+      // Calculate amounts
+      const thisMonthCollected = thisMonthPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+      const lastMonthCollected = lastMonthPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+
+      // Calculate collection rates
+      const thisMonthCollectionRate = expectedMonthlyRent > 0 
+        ? Math.round((thisMonthCollected / expectedMonthlyRent) * 100) 
+        : 0;
+      const lastMonthCollectionRate = expectedMonthlyRent > 0 
+        ? Math.round((lastMonthCollected / expectedMonthlyRent) * 100) 
+        : 0;
+
+      // Get recent payments with property and tenant info
+      const recentPayments = payments.slice(0, 5).map(payment => {
+        const property = properties.find(p => p.id === payment.propertyId);
+        return {
+          id: payment.id,
+          amount: payment.amount || 0,
+          paymentDate: payment.createdAt,
+          propertyName: property?.name || 'Unknown Property',
+          tenantName: payment.tenantName || 'Unknown Tenant',
+          paymentMethod: payment.paymentMethod || 'cash'
+        };
+      });
+
+      // Base summary
+      const baseSummary = {
+        totalProperties,
+        totalSpaces,
+        thisMonth: {
+          collected: thisMonthCollected,
+          expected: expectedMonthlyRent,
+          payments: thisMonthPayments.length,
+          collectionRate: thisMonthCollectionRate
+        },
+        lastMonth: {
+          collected: lastMonthCollected,
+          expected: expectedMonthlyRent,
+          payments: lastMonthPayments.length,
+          collectionRate: lastMonthCollectionRate
+        },
+        recentPayments
+      };
+
+      // If super admin, compute detailed system-wide matrix
+      if (userRole === 'super_admin') {
+        // Total users
+        const usersSnapshot = await getDocs(collection(db, 'users'));
+        const totalUsers = usersSnapshot.size;
+
+        // Total organizations (derive from properties and users organizationId)
+        const orgIdsFromProps = new Set(properties.map(p => p.organizationId).filter(Boolean));
+        const orgIdsFromUsers = new Set(usersSnapshot.docs.map(d => d.data().organizationId).filter(Boolean));
+        const mergedOrgIds = new Set([...orgIdsFromProps, ...orgIdsFromUsers]);
+        const totalOrganizations = mergedOrgIds.size;
+
+        // Payment method breakdown
+        const paymentMethodCounts = payments.reduce((acc, p) => {
+          const method = p.paymentMethod || 'cash';
+          acc[method] = (acc[method] || 0) + 1;
+          return acc;
+        }, {});
+
+        // Aggregate by organization
+        const orgAggregation = {};
+        payments.forEach(p => {
+          const orgId = p.organizationId || 'unknown';
+          if (!orgAggregation[orgId]) {
+            orgAggregation[orgId] = {
+              organizationId: orgId,
+              payments: 0,
+              collected: 0
+            };
+          }
+          orgAggregation[orgId].payments += 1;
+          orgAggregation[orgId].collected += (p.amount || 0);
+        });
+        // Convert to array and pick top 5
+        const topOrganizations = Object.values(orgAggregation)
+          .sort((a, b) => b.collected - a.collected)
+          .slice(0, 5);
+
+        // Overdue invoices and aging buckets
+        const allInvoices = await invoiceService.getAll(userId, userRole, organizationId);
+        const today = new Date();
+        const overdueInvoices = allInvoices.filter(inv => inv.status !== 'paid' && inv.dueDate && new Date(inv.dueDate) < today);
+        const aging = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
+        overdueInvoices.forEach(inv => {
+          const due = new Date(inv.dueDate);
+          const days = Math.floor((today - due) / (1000 * 60 * 60 * 24));
+          if (days <= 30) aging['0-30'] += 1;
+          else if (days <= 60) aging['31-60'] += 1;
+          else if (days <= 90) aging['61-90'] += 1;
+          else aging['90+'] += 1;
+        });
+
+        // System-wide collection KPI this month
+        const systemThisMonthCollected = thisMonthCollected;
+        const systemThisMonthExpected = expectedMonthlyRent;
+        const systemThisMonthPayments = thisMonthPayments.length;
+        const systemCollectionRate = thisMonthCollectionRate;
+
+        return {
+          ...baseSummary,
+          totalOrganizations,
+          totalUsers,
+          paymentMethodCounts,
+          topOrganizations,
+          overdue: {
+            count: overdueInvoices.length,
+            aging
+          },
+          systemThisMonthCollected,
+          systemThisMonthExpected,
+          systemThisMonthPayments,
+          systemCollectionRate,
+        };
+      }
+
+      return baseSummary;
     } catch (error) {
       handleFirebaseError(error, 'get dashboard summary');
+      throw error;
     }
   },
 };
@@ -1123,5 +1918,6 @@ export default {
   rentService,
   paymentService,
   tenantService,
+  invoiceService,
   realtimeService,
 };

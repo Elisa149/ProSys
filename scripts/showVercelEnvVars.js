@@ -124,3 +124,4 @@ console.log('4. Copy the firebaseConfig values');
 console.log('');
 console.log('═══════════════════════════════════════════════════════════════');
 
+

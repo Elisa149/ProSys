@@ -88,7 +88,7 @@ const AdminDashboardPage = () => {
     },
   ];
 
-  if (!userRole || !['org_admin', 'super_admin'].includes(userRole.name)) {
+  if (!userRole || !['org_admin', 'super_admin'].includes(userRole)) {
     return (
       <Box sx={{ p: 3 }}>
         <Alert severity="error">
@@ -133,10 +133,12 @@ const AdminDashboardPage = () => {
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" gutterBottom>
-          Admin Dashboard
+          {userRole === 'super_admin' ? 'System Dashboard' : 'Admin Dashboard'}
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Welcome back, {userProfile?.displayName || 'Administrator'}! Here's your organization overview.
+          {userRole === 'super_admin'
+            ? `Welcome back, ${userProfile?.displayName || 'Super Admin'}! Here's your system-wide overview.`
+            : `Welcome back, ${userProfile?.displayName || 'Administrator'}! Here's your organization overview.`}
         </Typography>
       </Box>
 

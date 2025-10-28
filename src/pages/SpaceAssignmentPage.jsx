@@ -432,7 +432,7 @@ const SpaceAssignmentPage = () => {
                                   </Typography>
                                 )}
                                 <Typography variant="body2" color="text.secondary">
-                                  Lease: {format(new Date(tenant.leaseStart), 'MMM yyyy')} - {format(new Date(tenant.leaseEnd), 'MMM yyyy')}
+                                  Lease: {tenant.leaseStart && !isNaN(new Date(tenant.leaseStart)) ? format(new Date(tenant.leaseStart), 'MMM yyyy') : 'N/A'} - {tenant.leaseEnd && !isNaN(new Date(tenant.leaseEnd)) ? format(new Date(tenant.leaseEnd), 'MMM yyyy') : 'Ongoing'}
                                 </Typography>
                               </Box>
                             )}
@@ -545,7 +545,7 @@ const SpaceAssignmentPage = () => {
                           </Typography>
                           <Typography variant="body1">{tenant.tenantName}</Typography>
                           <Typography variant="body2" color="text.secondary">
-                            Lease: {format(new Date(tenant.leaseStart), 'MMM yyyy')} - {format(new Date(tenant.leaseEnd), 'MMM yyyy')}
+                            Lease: {tenant.leaseStart && !isNaN(new Date(tenant.leaseStart)) ? format(new Date(tenant.leaseStart), 'MMM yyyy') : 'N/A'} - {tenant.leaseEnd && !isNaN(new Date(tenant.leaseEnd)) ? format(new Date(tenant.leaseEnd), 'MMM yyyy') : 'Ongoing'}
                           </Typography>
                         </Box>
                       ) : (

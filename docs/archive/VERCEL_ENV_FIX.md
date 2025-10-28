@@ -172,3 +172,4 @@ Once Firebase is working:
 3. Verify role-based access control
 4. Test all app features
 
+

@@ -15,6 +15,7 @@ import {
   Chip,
   Alert,
   LinearProgress,
+  Paper,
 } from '@mui/material';
 import {
   Home,
@@ -27,6 +28,24 @@ import {
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer as RechartsResponsiveContainer,
+  LineChart,
+  Line,
+  Area,
+  AreaChart,
+} from 'recharts';
+
 import { propertyService, paymentService } from '../services/firebaseService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import ResponsiveContainer from '../components/common/ResponsiveContainer';
@@ -36,16 +55,16 @@ import PropertySelectorDialog from '../components/PropertySelectorDialog';
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { user, hasPermission, hasAnyPermission } = useAuth();
+  const { user, userId, userRole, organizationId, hasPermission, hasAnyPermission } = useAuth();
   const [propertyDialog, setPropertyDialog] = React.useState(false);
 
-  // Fetch dashboard data using Firebase
+  // Fetch dashboard data using Firebase with RBAC
   const {
     data: summary,
     isLoading: summaryLoading,
     error: summaryError,
-  } = useQuery('dashboard-summary', () => paymentService.getDashboardSummary(user?.uid), {
-    enabled: !!user?.uid,
+  } = useQuery('dashboard-summary', () => paymentService.getDashboardSummary(userId, userRole, organizationId), {
+    enabled: !!userId,
     retry: 3,
     retryDelay: 1000,
     onError: (error) => {
@@ -56,16 +75,102 @@ const Dashboard = () => {
   const {
     data: properties,
     isLoading: propertiesLoading,
-  } = useQuery('properties', () => propertyService.getAll(user?.uid), {
-    enabled: !!user?.uid
+  } = useQuery('properties', () => propertyService.getAll(userId, userRole, organizationId), {
+    enabled: !!userId
   });
 
-  if (summaryLoading || propertiesLoading) {
-    return <LoadingSpinner message="Loading dashboard..." />;
-  }
+  const {
+    data: payments,
+    isLoading: paymentsLoading,
+  } = useQuery('payments', () => paymentService.getAll(userId, userRole, organizationId), {
+    enabled: !!userId
+  });
 
   // Use properties data directly (no need for nested data structure with Firebase)
   const propertiesArray = properties || [];
+  const paymentsArray = payments || [];
+  
+  // Process data for analytics charts - memoized using useMemo
+  // These MUST be before the early return to avoid hook order issues
+  const paymentMethodData = React.useMemo(() => {
+    if (!paymentsArray || paymentsArray.length === 0) {
+      return [
+        { name: 'Cash', value: 0 },
+        { name: 'Mobile Money', value: 0 },
+        { name: 'Bank Transfer', value: 0 },
+      ];
+    }
+    
+    const methods = {};
+    paymentsArray.forEach(payment => {
+      const method = payment.paymentMethod || 'cash';
+      const displayName = method === 'mobile_money' ? 'Mobile Money' : 
+                         method === 'bank_transfer' ? 'Bank Transfer' : 
+                         'Cash';
+      methods[displayName] = (methods[displayName] || 0) + 1;
+    });
+
+    return Object.entries(methods).map(([name, value]) => ({ name, value }));
+  }, [paymentsArray]);
+
+  const propertyTypeData = React.useMemo(() => {
+    if (!propertiesArray || propertiesArray.length === 0) {
+      return [
+        { name: 'Buildings', value: 0 },
+        { name: 'Land', value: 0 },
+      ];
+    }
+
+    const types = {
+      building: 0,
+      land: 0,
+    };
+
+    propertiesArray.forEach(property => {
+      if (property.type === 'building') types.building++;
+      if (property.type === 'land') types.land++;
+    });
+
+    return [
+      { name: 'Buildings', value: types.building },
+      { name: 'Land', value: types.land },
+    ];
+  }, [propertiesArray]);
+
+  const propertyIncomeData = React.useMemo(() => {
+    if (!propertiesArray || propertiesArray.length === 0) {
+      return [];
+    }
+
+    return propertiesArray
+      .map(property => {
+        let income = 0;
+        if (property.type === 'building' && property.buildingDetails?.floors) {
+          income = property.buildingDetails.floors.reduce((floorTotal, floor) => {
+            return floorTotal + (floor.spaces?.reduce((spaceTotal, space) => 
+              spaceTotal + (space.monthlyRent || 0), 0) || 0);
+          }, 0);
+        }
+        if (property.type === 'land' && property.landDetails?.squatters) {
+          income = property.landDetails.squatters.reduce((total, squatter) => 
+            total + (squatter.monthlyPayment || 0), 0);
+        }
+        return {
+          name: property.name.length > 20 ? property.name.substring(0, 20) + '...' : property.name,
+          income: income,
+          spaces: property.type === 'building' 
+            ? property.buildingDetails?.floors?.reduce((total, floor) => total + (floor.spaces?.length || 0), 0) || 0
+            : property.landDetails?.squatters?.length || 0,
+        };
+      })
+      .sort((a, b) => b.income - a.income)
+      .slice(0, 5); // Top 5 properties
+  }, [propertiesArray]);
+
+  const chartColors = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+  const pieColors = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+  
+  // Monthly comparison data will be calculated after dashboardData is created
   
   const createFallbackData = () => {
     const totalSpaces = propertiesArray.reduce((total, property) => {
@@ -118,7 +223,62 @@ const Dashboard = () => {
   // Show warning if using fallback data
   const usingFallbackData = !!summaryError;
 
-  const stats = [
+  // Calculate monthly comparison data (as regular variable, not useMemo to avoid hook order issues)
+  const monthlyComparisonData = (() => {
+    if (!dashboardData.thisMonth || !dashboardData.lastMonth) {
+      return [
+        { name: 'This Month', collected: 0, expected: 0 },
+        { name: 'Last Month', collected: 0, expected: 0 },
+      ];
+    }
+
+    return [
+      {
+        name: 'This Month',
+        collected: dashboardData.thisMonth.collected || 0,
+        expected: dashboardData.thisMonth.expected || 0,
+      },
+      {
+        name: 'Last Month',
+        collected: dashboardData.lastMonth.collected || 0,
+        expected: dashboardData.lastMonth.expected || 0,
+      },
+    ];
+  })();
+
+  // Early return for loading state - MUST be after all hooks
+  if (summaryLoading || propertiesLoading || paymentsLoading) {
+    return <LoadingSpinner message="Loading dashboard..." />;
+  }
+
+  const stats = userRole === 'super_admin' ? [
+    {
+      title: 'Organizations',
+      value: dashboardData.totalOrganizations?.toLocaleString?.() || dashboardData.totalOrganizations || 0,
+      icon: <Home />,
+      color: 'primary',
+    },
+    {
+      title: 'Users',
+      value: dashboardData.totalUsers?.toLocaleString?.() || dashboardData.totalUsers || 0,
+      icon: <Person />,
+      color: 'info',
+    },
+    {
+      title: 'Collected (This Month)',
+      value: `UGX ${(dashboardData.systemThisMonthCollected || 0).toLocaleString()}`,
+      subtitle: `${dashboardData.systemThisMonthPayments || 0} payments across orgs`,
+      icon: <AttachMoney />,
+      color: 'success',
+    },
+    {
+      title: 'Potential vs Collected',
+      value: `UGX ${(dashboardData.systemThisMonthExpected || 0).toLocaleString()}`,
+      subtitle: `${dashboardData.systemCollectionRate || 0}% collected`,
+      icon: <TrendingUp />,
+      color: (dashboardData.systemCollectionRate || 0) >= 80 ? 'success' : 'warning',
+    },
+  ] : [
     {
       title: 'Total Properties',
       value: dashboardData.totalProperties || 0,
@@ -157,11 +317,43 @@ const Dashboard = () => {
   return (
     <ResponsiveContainer>
       <ResponsiveHeader
-        title="Dashboard"
-        subtitle="Welcome back! Here's what's happening with your properties."
+        title={userRole === 'super_admin' ? 'System Dashboard' : 'Dashboard'}
+        subtitle={userRole === 'super_admin' 
+          ? "System-wide analytics across all organizations."
+          : "Welcome back! Here's what's happening with your properties."}
         icon={<Home color="primary" />}
         actions={[
-          hasAnyPermission(['properties:create:organization', 'properties:write:all']) && (
+          userRole === 'super_admin' && (
+            <Button
+              key="admin-analytics"
+              variant="contained"
+              startIcon={<TrendingUp />}
+              onClick={() => navigate('/app/admin/analytics')}
+            >
+              System Analytics
+            </Button>
+          ),
+          userRole === 'super_admin' && (
+            <Button
+              key="admin-orgs"
+              variant="outlined"
+              startIcon={<Home />}
+              onClick={() => navigate('/app/admin/organizations')}
+            >
+              Organizations
+            </Button>
+          ),
+          userRole === 'super_admin' && (
+            <Button
+              key="admin-users"
+              variant="outlined"
+              startIcon={<Person />}
+              onClick={() => navigate('/app/admin/users')}
+            >
+              Users
+            </Button>
+          ),
+          userRole !== 'super_admin' && hasAnyPermission(['properties:create:organization', 'properties:write:all']) && (
             <Button
               key="add-property"
               variant="contained"
@@ -171,14 +363,16 @@ const Dashboard = () => {
               Create Property
             </Button>
           ),
-          <Button
-            key="assign-tenants"
-            variant="outlined"
-            startIcon={<Person />}
-            onClick={() => setPropertyDialog(true)}
-          >
-            Assign Tenants
-          </Button>,
+          userRole !== 'super_admin' && (
+            <Button
+              key="assign-tenants"
+              variant="outlined"
+              startIcon={<Person />}
+              onClick={() => setPropertyDialog(true)}
+            >
+              Assign Tenants
+            </Button>
+          ),
         ].filter(Boolean)}
       />
 
@@ -235,10 +429,10 @@ const Dashboard = () => {
               <Box sx={{ mb: 2 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                   <Typography variant="body2">
-                    ${dashboardData.thisMonth?.collected?.toLocaleString() || '0'} collected
+                    UGX {dashboardData.thisMonth?.collected?.toLocaleString() || '0'} collected
                   </Typography>
                   <Typography variant="body2">
-                    ${dashboardData.thisMonth?.expected?.toLocaleString() || '0'} expected
+                    UGX {dashboardData.thisMonth?.expected?.toLocaleString() || '0'} expected
                   </Typography>
                 </Box>
                 <LinearProgress
@@ -268,7 +462,7 @@ const Dashboard = () => {
                     This Month
                   </Typography>
                   <Typography variant="h6">
-                    ${dashboardData.thisMonth?.collected?.toLocaleString() || '0'}
+                    UGX {dashboardData.thisMonth?.collected?.toLocaleString() || '0'}
                   </Typography>
                 </Box>
                 <Box>
@@ -276,7 +470,7 @@ const Dashboard = () => {
                     Last Month
                   </Typography>
                   <Typography variant="h6">
-                    ${dashboardData.lastMonth?.collected?.toLocaleString() || '0'}
+                    UGX {dashboardData.lastMonth?.collected?.toLocaleString() || '0'}
                   </Typography>
                 </Box>
               </Box>
@@ -284,13 +478,13 @@ const Dashboard = () => {
                 <Box>
                   {dashboardData.thisMonth.collected >= dashboardData.lastMonth.collected ? (
                     <Chip
-                      label={`+$${(dashboardData.thisMonth.collected - dashboardData.lastMonth.collected).toLocaleString()} vs last month`}
+                      label={`+UGX ${(dashboardData.thisMonth.collected - dashboardData.lastMonth.collected).toLocaleString()} vs last month`}
                       color="success"
                       size="small"
                     />
                   ) : (
                     <Chip
-                      label={`-$${(dashboardData.lastMonth.collected - dashboardData.thisMonth.collected).toLocaleString()} vs last month`}
+                      label={`-UGX ${(dashboardData.lastMonth.collected - dashboardData.thisMonth.collected).toLocaleString()} vs last month`}
                       color="error"
                       size="small"
                     />
@@ -327,11 +521,11 @@ const Dashboard = () => {
                     >
                       <ListItemText
                         primary={`${payment.propertyName} - ${payment.tenantName}`}
-                        secondary={`${payment.paymentMethod} • ${format(new Date(payment.paymentDate), 'MMM dd, yyyy')}`}
+                        secondary={`${payment.paymentMethod} • ${payment.paymentDate && payment.paymentDate !== 'Invalid Date' ? format(new Date(payment.paymentDate), 'MMM dd, yyyy') : 'N/A'}`}
                       />
                       <ListItemSecondaryAction>
                         <Typography variant="h6" color="success.main">
-                          ${payment.amount.toLocaleString()}
+                          UGX {payment.amount.toLocaleString()}
                         </Typography>
                       </ListItemSecondaryAction>
                     </ListItem>
@@ -351,6 +545,241 @@ const Dashboard = () => {
                   </Button>
                 </Box>
               )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {userRole === 'super_admin' && (
+          <>
+            {/* System Matrix: Top Organizations */}
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    🏢 Top Organizations by Collections
+                  </Typography>
+                  {dashboardData.topOrganizations?.length ? (
+                    <List>
+                      {dashboardData.topOrganizations.map((org) => (
+                        <ListItem key={org.organizationId}>
+                          <ListItemText
+                            primary={org.organizationId || 'Unknown Org'}
+                            secondary={`${org.payments} payments`}
+                          />
+                          <ListItemSecondaryAction>
+                            <Typography variant="subtitle1" color="success.main">
+                              UGX {org.collected.toLocaleString()}
+                            </Typography>
+                          </ListItemSecondaryAction>
+                        </ListItem>
+                      ))}
+                    </List>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      No data
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* System Matrix: Overdue and Aging */}
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    ⏰ Overdue Invoices (Aging)
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6} sm={3}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Typography variant="body2" color="text.secondary">0-30</Typography>
+                          <Typography variant="h5">{dashboardData.overdue?.aging?.['0-30'] || 0}</Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Typography variant="body2" color="text.secondary">31-60</Typography>
+                          <Typography variant="h5">{dashboardData.overdue?.aging?.['31-60'] || 0}</Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Typography variant="body2" color="text.secondary">61-90</Typography>
+                          <Typography variant="h5">{dashboardData.overdue?.aging?.['61-90'] || 0}</Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Typography variant="body2" color="text.secondary">90+</Typography>
+                          <Typography variant="h5">{dashboardData.overdue?.aging?.['90+'] || 0}</Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                  <Typography sx={{ mt: 2 }} variant="body2" color="text.secondary">
+                    Total overdue: {dashboardData.overdue?.count || 0}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* System Matrix: Payment Method Breakdown */}
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    💳 Payment Methods (System-wide)
+                  </Typography>
+                  <Grid container spacing={2}>
+                    {Object.entries(dashboardData.paymentMethodCounts || { cash: 0, mobile_money: 0, bank_transfer: 0 }).map(([method, count]) => (
+                      <Grid item xs={12} sm={4} key={method}>
+                        <Paper sx={{ p: 2 }} variant="outlined">
+                          <Typography variant="subtitle2" color="text.secondary">
+                            {method === 'mobile_money' ? 'Mobile Money' : method === 'bank_transfer' ? 'Bank Transfer' : 'Cash'}
+                          </Typography>
+                          <Typography variant="h5">{count}</Typography>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
+          </>
+        )}
+
+        {/* Analytics Charts Section */}
+        {/* Monthly Revenue Comparison Bar Chart */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                📊 Monthly Revenue Comparison
+              </Typography>
+              <RechartsResponsiveContainer width="100%" height={300}>
+                <BarChart data={monthlyComparisonData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis tickFormatter={(value) => `${value.toLocaleString()}`} />
+                  <Tooltip formatter={(value) => `UGX ${value.toLocaleString()}`} />
+                  <Legend />
+                  <Bar dataKey="collected" fill="#00C49F" name="Collected" />
+                  <Bar dataKey="expected" fill="#0088FE" name="Expected" />
+                </BarChart>
+              </RechartsResponsiveContainer>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Property Income Bar Chart */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                💰 Top Properties by Income
+              </Typography>
+              <RechartsResponsiveContainer width="100%" height={300}>
+                <BarChart data={propertyIncomeData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" tickFormatter={(value) => `${value.toLocaleString()}`} />
+                  <YAxis dataKey="name" type="category" width={100} />
+                  <Tooltip formatter={(value) => `UGX ${value.toLocaleString()}`} />
+                  <Legend />
+                  <Bar dataKey="income" fill="#8884d8" name="Monthly Income" />
+                </BarChart>
+              </RechartsResponsiveContainer>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Property Type Distribution Pie Chart */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                🏗️ Property Type Distribution
+              </Typography>
+              <RechartsResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={propertyTypeData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={(entry) => `${entry.name}: ${entry.value}`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {propertyTypeData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </RechartsResponsiveContainer>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Payment Methods Distribution Pie Chart */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                💳 Payment Methods Distribution
+              </Typography>
+              <RechartsResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={paymentMethodData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={(entry) => `${entry.name}`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {paymentMethodData.map((entry, index) => (
+                      <Cell key={`payment-cell-${index}`} fill={pieColors[index % pieColors.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </RechartsResponsiveContainer>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Revenue Trend Area Chart */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                📈 Revenue Trends
+              </Typography>
+              <RechartsResponsiveContainer width="100%" height={300}>
+                <AreaChart data={monthlyComparisonData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis tickFormatter={(value) => `${value.toLocaleString()}`} />
+                  <Tooltip formatter={(value) => `UGX ${value.toLocaleString()}`} />
+                  <Legend />
+                  <Area type="monotone" dataKey="collected" stackId="1" stroke="#00C49F" fill="#00C49F" name="Collected" />
+                  <Area type="monotone" dataKey="expected" stackId="2" stroke="#0088FE" fill="#0088FE" name="Expected" opacity={0.3} />
+                </AreaChart>
+              </RechartsResponsiveContainer>
             </CardContent>
           </Card>
         </Grid>
@@ -431,8 +860,8 @@ const Dashboard = () => {
                       <ListItemText
                         primary={property.name}
                         secondary={
-                          <Box>
-                            <Typography variant="body2" color="text.secondary">
+                          <Box component="div">
+                            <Typography component="span" variant="body2" color="text.secondary">
                               {property.type === 'building' && property.buildingDetails 
                                 ? `${property.buildingDetails.totalRentableSpaces || 0} spaces`
                                 : property.type === 'land' && property.landDetails
@@ -440,7 +869,7 @@ const Dashboard = () => {
                                 : 'No spaces defined'
                               }
                             </Typography>
-                            <Typography variant="body2" color="success.main">
+                            <Typography component="span" variant="body2" color="success.main" sx={{ display: 'block' }}>
                               UGX {
                                 property.type === 'building' && property.buildingDetails
                                   ? (property.buildingDetails.floors?.reduce((total, floor) => {

@@ -95,3 +95,4 @@ console.log('=' .repeat(80));
 
 checkProperties();
 
+
