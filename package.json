@@ -9,7 +9,8 @@
     "lint": "eslint . --ext js,jsx,ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "add-permissions": "node scripts/addPermissionsToUsers.js",
-    "show-vercel-env": "node scripts/showVercelEnvVars.js"
+    "show-vercel-env": "node scripts/showVercelEnvVars.js",
+    "check-db": "node scripts/checkDatabaseData.js"
   },
   "dependencies": {
     "@emotion/react": "^11.11.1",

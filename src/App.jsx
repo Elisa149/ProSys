@@ -22,10 +22,12 @@ import AllSpacesPage from './pages/AllSpacesPage';
 import TenantsPage from './pages/TenantsPage';
 import RentPage from './pages/RentPage';
 import PaymentsPage from './pages/PaymentsPage';
+import InvoicesPage from './pages/InvoicesPage';
 import ProfilePage from './pages/ProfilePage';
 import UserRoleAssignmentPage from './pages/UserRoleAssignmentPage';
 import FirebaseDirectExample from './pages/FirebaseDirectExample';
 import DiagnosticPage from './pages/DiagnosticPage';
+import QuickDataCheck from './pages/QuickDataCheck';
 
 // Admin pages
 import AdminDashboardPage from './pages/admin/AdminDashboardPage';
@@ -149,6 +151,9 @@ function App() {
           {/* Rent Management */}
           <Route path="rent" element={<RentPage />} />
 
+          {/* Invoices */}
+          <Route path="invoices" element={<InvoicesPage />} />
+
           {/* Payment Tracking */}
           <Route path="payments" element={<PaymentsPage />} />
 
@@ -157,6 +162,9 @@ function App() {
           
           {/* Diagnostic Page */}
           <Route path="diagnostic" element={<DiagnosticPage />} />
+          
+          {/* Quick Data Check */}
+          <Route path="data-check" element={<QuickDataCheck />} />
           
           {/* Firebase Direct Example */}
           <Route path="firebase-example" element={<FirebaseDirectExample />} />

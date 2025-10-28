@@ -103,7 +103,7 @@ const CorporatePaymentSlip = ({ payment, property, tenant, open, onClose }) => {
             }
             
             body {
-              padding: 15px;
+              padding: 10px;
             }
             
             .corporate-slip-content {
@@ -117,11 +117,11 @@ const CorporatePaymentSlip = ({ payment, property, tenant, open, onClose }) => {
             table {
               width: 100%;
               border-collapse: collapse;
-              margin: 10px 0;
+              margin: 15px 0;
             }
             
             th, td {
-              padding: 8px;
+              padding: 10px;
               text-align: left;
               border: 1px solid #ddd;
             }
@@ -134,42 +134,113 @@ const CorporatePaymentSlip = ({ payment, property, tenant, open, onClose }) => {
             .header-section {
               background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%) !important;
               color: white !important;
-              padding: 20px !important;
+              padding: 15px !important;
               margin-bottom: 20px !important;
-            }
-            
-            .section-title {
-              background-color: #f5f5f5 !important;
-              padding: 8px 12px !important;
-              margin: 15px 0 10px 0 !important;
-              font-weight: bold !important;
-              border-left: 4px solid #1976d2 !important;
+              border-radius: 4px !important;
             }
             
             img {
-              max-width: 150px !important;
+              max-width: 120px !important;
               height: auto !important;
+              display: block;
+              margin: 0 auto;
+            }
+            
+            .MuiPaper-root {
+              background: white !important;
+            }
+            
+            .MuiTypography-root {
+              color: #333 !important;
+            }
+            
+            .MuiBox-root {
+              margin-bottom: 12px !important;
+            }
+            
+            .MuiDivider-root {
+              margin: 15px 0 !important;
+              border-color: #333 !important;
+            }
+            
+            /* Grid styling */
+            .MuiGrid-container {
+              margin: 0 !important;
+            }
+            
+            /* Table container */
+            .MuiTableContainer-root {
+              margin-bottom: 20px !important;
+              border: 1px solid #ddd !important;
+              border-radius: 4px !important;
+            }
+            
+            /* Amount box */
+            .MuiBox-root {
+              border: 3px solid #1976d2 !important;
+              border-radius: 8px !important;
+              padding: 20px !important;
+              background: #f0f8ff !important;
+              margin-bottom: 20px !important;
+            }
+            
+            /* Notes box */
+            .MuiBox-root {
+              background: #fff9e6 !important;
+              border: 1px solid #ffd700 !important;
+              border-radius: 4px !important;
+              padding: 15px !important;
             }
             
             @media print {
+              @page {
+                size: A4 portrait;
+                margin: 12mm;
+              }
+              
               html, body {
                 width: 210mm;
                 height: 297mm;
                 margin: 0 !important;
                 padding: 0 !important;
+                background: white !important;
               }
               
               body {
-                padding: 10mm !important;
+                padding: 0 !important;
               }
               
               .corporate-slip-content {
-                page-break-inside: avoid !important;
+                padding: 15px !important;
+                margin: 0 !important;
+                background: white !important;
+                font-size: 12px !important;
               }
               
               * {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
+              }
+              
+              /* Ensure table borders print */
+              table, th, td {
+                border: 1px solid #333 !important;
+                border-collapse: collapse !important;
+              }
+              
+              /* Keep sections together */
+              .MuiBox-root {
+                page-break-inside: avoid !important;
+              }
+              
+              /* Keep table together */
+              .MuiTableContainer-root {
+                page-break-inside: avoid !important;
+              }
+              
+              /* Keep receipt on one page if possible */
+              .corporate-slip-content {
+                page-break-after: avoid !important;
               }
             }
             
@@ -243,537 +314,149 @@ const CorporatePaymentSlip = ({ payment, property, tenant, open, onClose }) => {
           className="corporate-slip-content"
           elevation={0}
           sx={{
-            p: 3,
+            p: 2,
             border: '1px solid #e0e0e0',
             backgroundColor: '#ffffff',
           }}
         >
-          {/* Header Section */}
-          <Box
-            className="header-section"
-            sx={{
-              background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
-              color: 'white',
-              p: 3,
-              mb: 3,
-              borderRadius: '4px',
-            }}
-          >
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={8}>
-                <Typography variant="h4" fontWeight="bold" gutterBottom>
-                  PAYMENT SLIP
-                </Typography>
-                <Typography variant="h6">
-                  {property?.name || payment.propertyName || 'Property Management System'}
-                </Typography>
-                <Typography variant="body2" sx={{ mt: 1 }}>
-                  Professional Property Management Services
-                </Typography>
-              </Grid>
-              <Grid item xs={4} sx={{ textAlign: 'right' }}>
-                <Typography variant="h6" fontWeight="bold">
-                  Invoice #
-                </Typography>
-                <Typography variant="h5" fontFamily="monospace">
-                  {invoiceNumber}
-                </Typography>
-              </Grid>
-            </Grid>
-          </Box>
-
-          <Grid container spacing={3}>
-            {/* Left Column - Bill To & From */}
-            <Grid item xs={12} md={7}>
-              {/* Bill From Section */}
-              <Box sx={{ mb: 3 }}>
-                <Typography
-                  className="section-title"
-                  variant="subtitle1"
-                  sx={{
-                    bgcolor: '#f5f5f5',
-                    p: 1,
-                    fontWeight: 'bold',
-                    borderLeft: '4px solid #1976d2',
-                  }}
-                >
-                  BILL FROM (Property Owner/Manager)
-                </Typography>
-                <Box sx={{ mt: 1, pl: 2 }}>
-                  <Typography variant="body1" fontWeight="bold">
-                    {property?.name || payment.propertyName || 'Property Management Ltd.'}
-                  </Typography>
-                  <Typography variant="body2">
-                    {property?.address || 'Kampala, Uganda'}
-                  </Typography>
-                  <Typography variant="body2">
-                    Phone: +256 XXX XXX XXX
-                  </Typography>
-                  <Typography variant="body2">
-                    Email: accounts@propertymanagement.com
-                  </Typography>
-                  <Typography variant="body2">
-                    TIN: XXXXXXXXXX (Tax ID Number)
-                  </Typography>
-                </Box>
-              </Box>
-
-              {/* Bill To Section */}
-              <Box sx={{ mb: 3 }}>
-                <Typography
-                  className="section-title"
-                  variant="subtitle1"
-                  sx={{
-                    bgcolor: '#f5f5f5',
-                    p: 1,
-                    fontWeight: 'bold',
-                    borderLeft: '4px solid #1976d2',
-                  }}
-                >
-                  BILL TO (Tenant/Company)
-                </Typography>
-                <Box sx={{ mt: 1, pl: 2 }}>
-                  <Typography variant="body1" fontWeight="bold">
-                    {tenant?.companyName || payment.tenantName || 'Corporate Tenant'}
-                  </Typography>
-                  <Typography variant="body2">
-                    Contact Person: {tenant?.contactPerson || 'N/A'}
-                  </Typography>
-                  <Typography variant="body2">
-                    Address: {tenant?.address || property?.name || 'N/A'}
-                  </Typography>
-                  <Typography variant="body2">
-                    Phone: {tenant?.phone || '+256 XXX XXX XXX'}
-                  </Typography>
-                  <Typography variant="body2">
-                    Email: {tenant?.email || 'tenant@company.com'}
-                  </Typography>
-                  <Typography variant="body2">
-                    TIN: {tenant?.tin || 'XXXXXXXXXX'}
-                  </Typography>
-                </Box>
-              </Box>
-
-              {/* Property Details */}
-              <Box sx={{ mb: 3 }}>
-                <Typography
-                  className="section-title"
-                  variant="subtitle1"
-                  sx={{
-                    bgcolor: '#f5f5f5',
-                    p: 1,
-                    fontWeight: 'bold',
-                    borderLeft: '4px solid #1976d2',
-                  }}
-                >
-                  PROPERTY DETAILS
-                </Typography>
-                <Grid container spacing={2} sx={{ mt: 0.5, pl: 2 }}>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Property Name:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      {property?.name || payment.propertyName || 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Space/Unit:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      {payment.spaceName || tenant?.spaceName || 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Property Type:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      {property?.propertyType || 'Commercial'}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Floor Area:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      {property?.area || 'N/A'} sq ft
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </Box>
-            </Grid>
-
-            {/* Right Column - Dates & QR */}
-            <Grid item xs={12} md={5}>
-              {/* Invoice Dates */}
-              <Box sx={{ mb: 3 }}>
-                <Typography
-                  className="section-title"
-                  variant="subtitle1"
-                  sx={{
-                    bgcolor: '#f5f5f5',
-                    p: 1,
-                    fontWeight: 'bold',
-                    borderLeft: '4px solid #1976d2',
-                  }}
-                >
-                  PAYMENT INFORMATION
-                </Typography>
-                <Grid container spacing={2} sx={{ mt: 0.5, pl: 2 }}>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Issue Date:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      {format(issueDate, 'dd MMM yyyy')}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Due Date:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold" color="error.main">
-                      {format(dueDate, 'dd MMM yyyy')}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Billing Period:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      {format(issueDate, 'MMMM yyyy')}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Payment Terms:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      {payment.paymentTerms || 'Net 7 Days'}
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </Box>
-
-              {/* QR Code */}
-              <Box sx={{ textAlign: 'center', mb: 3 }}>
-                <Typography
-                  variant="subtitle1"
-                  fontWeight="bold"
-                  gutterBottom
-                  sx={{ color: '#1976d2' }}
-                >
-                  Quick Payment Verification
-                </Typography>
-                {qrCodeDataURL && (
-                  <Box
-                    sx={{
-                      display: 'inline-block',
-                      p: 2,
-                      border: '2px solid #1976d2',
-                      borderRadius: '8px',
-                      backgroundColor: '#f8f9fa',
-                    }}
-                  >
-                    <img
-                      src={qrCodeDataURL}
-                      alt="Payment QR Code"
-                      style={{ maxWidth: '150px', height: 'auto' }}
-                    />
-                  </Box>
-                )}
-                <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                  Scan to verify payment details
-                </Typography>
-              </Box>
-
-              {/* Payment Status */}
-              <Box
-                sx={{
-                  border: '2px solid',
-                  borderColor: payment.status === 'paid' ? 'success.main' : 'warning.main',
-                  borderRadius: '4px',
-                  p: 2,
-                  textAlign: 'center',
-                  bgcolor: payment.status === 'paid' ? 'success.light' : 'warning.light',
-                }}
-              >
-                <Typography variant="h6" fontWeight="bold">
-                  STATUS: {payment.status?.toUpperCase() || 'PENDING'}
-                </Typography>
-              </Box>
-            </Grid>
-          </Grid>
-
-          {/* Charges Breakdown Table */}
-          <Box sx={{ mt: 3 }}>
-            <Typography
-              className="section-title"
-              variant="subtitle1"
-              sx={{
-                bgcolor: '#f5f5f5',
-                p: 1,
-                fontWeight: 'bold',
-                borderLeft: '4px solid #1976d2',
-              }}
-            >
-              CHARGES BREAKDOWN
+          {/* Company Header */}
+          <Box sx={{ textAlign: 'center', mb: 3, pb: 2 }}>
+            <Typography variant="h5" fontWeight="bold" gutterBottom>
+              {property?.name || payment.propertyName || 'Property Management Ltd.'}
             </Typography>
-            <TableContainer component={Paper} variant="outlined" sx={{ mt: 1 }}>
-              <Table>
-                <TableHead>
-                  <TableRow sx={{ bgcolor: '#f5f5f5' }}>
-                    <TableCell><strong>Description</strong></TableCell>
-                    <TableCell align="right"><strong>Period</strong></TableCell>
-                    <TableCell align="right"><strong>Rate</strong></TableCell>
-                    <TableCell align="right"><strong>Amount (UGX)</strong></TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  <TableRow>
-                    <TableCell>Monthly Rent</TableCell>
-                    <TableCell align="right">{format(issueDate, 'MMMM yyyy')}</TableCell>
-                    <TableCell align="right">-</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                      {subtotal.toLocaleString()}
-                    </TableCell>
-                  </TableRow>
-                  {lateFee > 0 && (
-                    <TableRow>
-                      <TableCell>Late Payment Fee</TableCell>
-                      <TableCell align="right">-</TableCell>
-                      <TableCell align="right">-</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 'bold', color: 'error.main' }}>
-                        {lateFee.toLocaleString()}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  <TableRow sx={{ bgcolor: '#f9f9f9' }}>
-                    <TableCell colSpan={3} sx={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                      TOTAL AMOUNT DUE
-                    </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#1976d2' }}>
-                      UGX {total.toLocaleString()}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Box>
-
-          {/* Amount in Words */}
-          <Box 
-            sx={{ 
-              mt: 2,
-              p: 2,
-              border: '2px solid #1976d2',
-              borderRadius: '4px',
-              bgcolor: '#e3f2fd',
-            }}
-          >
-            <Typography 
-              variant="body2" 
-              color="text.secondary" 
-              fontWeight="bold"
-              gutterBottom
-            >
-              AMOUNT IN WORDS:
+            <Typography variant="body1" gutterBottom>
+              {property?.name || payment.propertyName || 'Property Management System'}
             </Typography>
-            <Typography 
-              variant="h6" 
-              sx={{ 
-                fontWeight: 'bold',
-                color: '#1976d2',
-                fontStyle: 'italic',
-                letterSpacing: '0.5px',
-              }}
-            >
-              {formatAmountInWords(total)}
+            <Typography variant="body2">Kampala, Uganda</Typography>
+            <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+              {tenant?.email || 'info@propertymanagement.com'}
+            </Typography>
+            <Typography variant="caption" display="block">
+              {payment.propertyName || 'accounts@propertymanagement.com'}
             </Typography>
           </Box>
 
-          {/* Payment Method & Transaction ID */}
-          <Grid container spacing={2} sx={{ mt: 2 }}>
-            <Grid item xs={12} md={6}>
-              <Box
-                sx={{
-                  p: 2,
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '4px',
-                  bgcolor: '#f9f9f9',
-                }}
-              >
-                <Typography variant="body2" color="text.secondary" fontWeight="bold" gutterBottom>
-                  PAYMENT METHOD:
-                </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 'bold', textTransform: 'uppercase' }}>
-                  {payment.paymentMethod ? payment.paymentMethod.replace('_', ' ') : 'TO BE CONFIRMED'}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                  {payment.paymentMethod === 'bank_transfer' && 'Bank Transfer/Deposit'}
-                  {payment.paymentMethod === 'mobile_money' && 'Mobile Money (MTN/Airtel)'}
-                  {payment.paymentMethod === 'cash' && 'Cash Payment'}
-                  {payment.paymentMethod === 'check' && 'Cheque Payment'}
-                  {payment.paymentMethod === 'credit_card' && 'Credit/Debit Card'}
-                  {payment.paymentMethod === 'online' && 'Online Payment'}
-                  {!payment.paymentMethod && 'Payment method pending'}
-                </Typography>
-              </Box>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Box
-                sx={{
-                  p: 2,
-                  border: payment.transactionId ? '2px solid #4caf50' : '1px solid #e0e0e0',
-                  borderRadius: '4px',
-                  bgcolor: payment.transactionId ? '#f1f8f4' : '#f9f9f9',
-                }}
-              >
-                <Typography variant="body2" color="text.secondary" fontWeight="bold" gutterBottom>
-                  TRANSACTION/REFERENCE ID:
-                </Typography>
-                {payment.transactionId ? (
-                  <>
-                    <Typography 
-                      variant="h6" 
-                      sx={{ 
-                        fontWeight: 'bold', 
-                        fontFamily: 'monospace',
-                        color: '#4caf50',
-                        letterSpacing: '1px',
-                      }}
-                    >
-                      {payment.transactionId}
-                    </Typography>
-                    <Typography variant="caption" color="success.main" display="block" sx={{ mt: 0.5 }}>
-                      ✓ Transaction verified
-                    </Typography>
-                  </>
-                ) : (
-                  <>
-                    <Typography variant="body1" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
-                      Not provided yet
-                    </Typography>
-                    <Typography variant="caption" color="warning.main" display="block" sx={{ mt: 0.5 }}>
-                      Please provide reference after payment
-                    </Typography>
-                  </>
-                )}
-              </Box>
-            </Grid>
-          </Grid>
+          <Divider sx={{ mb: 2 }} />
 
-          {/* Payment Instructions */}
-          <Box sx={{ mt: 3 }}>
-            <Typography
-              className="section-title"
-              variant="subtitle1"
-              sx={{
-                bgcolor: '#f5f5f5',
-                p: 1,
-                fontWeight: 'bold',
-                borderLeft: '4px solid #1976d2',
-              }}
-            >
-              PAYMENT INSTRUCTIONS
+          {/* Document Title in Box */}
+          <Box sx={{ border: '1px solid #333', p: 1.5, mb: 2, textAlign: 'center' }}>
+            <Typography variant="h5" fontWeight="bold">
+              RENT RECEIPT
             </Typography>
-            <Grid container spacing={2} sx={{ mt: 0.5, pl: 2 }}>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" fontWeight="bold" gutterBottom>
-                  Bank Transfer Details:
-                </Typography>
-                <Typography variant="body2">Bank Name: Stanbic Bank Uganda</Typography>
-                <Typography variant="body2">Account Name: Property Management Ltd</Typography>
-                <Typography variant="body2" fontFamily="monospace">Account Number: 9030008123456</Typography>
-                <Typography variant="body2">Swift Code: SBICUGKX</Typography>
-                <Typography variant="body2">Branch: Kampala Main Branch</Typography>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" fontWeight="bold" gutterBottom>
-                  Mobile Money:
-                </Typography>
-                <Typography variant="body2">MTN Mobile Money: 0782 XXX XXX</Typography>
-                <Typography variant="body2">Airtel Money: 0752 XXX XXX</Typography>
-                <Typography variant="body2" sx={{ mt: 1, fontWeight: 'bold' }}>
-                  Reference: {invoiceNumber}
-                </Typography>
-                <Typography variant="caption" color="error.main" display="block" sx={{ mt: 1 }}>
-                  * Please include invoice number in payment reference
-                </Typography>
-              </Grid>
-            </Grid>
           </Box>
 
-          {/* Terms and Conditions */}
-          <Box sx={{ mt: 3 }}>
-            <Typography
-              className="section-title"
-              variant="subtitle1"
-              sx={{
-                bgcolor: '#f5f5f5',
-                p: 1,
-                fontWeight: 'bold',
-                borderLeft: '4px solid #1976d2',
-              }}
-            >
-              TERMS & CONDITIONS
+          {/* Reference Numbers */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" fontWeight="bold">
+              {invoiceNumber}
             </Typography>
-            <Box sx={{ mt: 1, pl: 2 }}>
-              <Typography variant="body2" gutterBottom>
-                • Payment is due within 7 days of invoice date
+          </Box>
+
+          {/* Received From */}
+          <Typography variant="body2" fontWeight="bold" gutterBottom>
+            RECEIVED FROM: {tenant?.companyName || payment.tenantName || 'Corporate Tenant'}
+          </Typography>
+
+          {/* Description */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" fontWeight="bold" gutterBottom>
+              Description of payment:
+            </Typography>
+            <Typography variant="body2">
+              Monthly rent payment for {format(issueDate, 'MMMM yyyy')} - Property: {property?.name || payment.propertyName || 'N/A'}
+              {payment.spaceName && ` - Space: ${payment.spaceName}`}
+            </Typography>
+          </Box>
+
+          {/* Payment Details */}
+          <Box sx={{ mb: 3, textAlign: 'center' }}>
+            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+              PAYMENT DETAILS
+            </Typography>
+            <Box sx={{ border: '1px solid #333', p: 2 }}>
+              <Typography variant="body2" align="left" gutterBottom>
+                Amount:
               </Typography>
-              <Typography variant="body2" gutterBottom>
-                • Late payment attracts a penalty of 5% per month on outstanding balance
+              <Typography variant="h6" fontWeight="bold" align="left" sx={{ 
+                textDecoration: 'underline',
+                mb: 2
+              }}>
+                USh {total.toLocaleString()}
               </Typography>
-              <Typography variant="body2" gutterBottom>
-                • Please send proof of payment to: accounts@propertymanagement.com
+              <Typography variant="body2" align="left" gutterBottom>
+                Amount in words:
               </Typography>
-              <Typography variant="body2" gutterBottom>
-                • For queries, contact: +256 XXX XXX XXX (Mon-Fri, 8AM-5PM)
-              </Typography>
-              <Typography variant="body2" gutterBottom>
-                • This is a computer-generated invoice and does not require a signature
+              <Typography variant="body2" fontWeight="bold" align="left" sx={{ 
+                textDecoration: 'underline',
+                textTransform: 'uppercase'
+              }}>
+                {formatAmountInWords(total)}
               </Typography>
             </Box>
           </Box>
 
-          {/* Notes Section */}
-          {payment.notes && (
-            <Box sx={{ mt: 3 }}>
-              <Typography
-                className="section-title"
-                variant="subtitle1"
-                sx={{
-                  bgcolor: '#f5f5f5',
-                  p: 1,
-                  fontWeight: 'bold',
-                  borderLeft: '4px solid #1976d2',
-                }}
-              >
-                ADDITIONAL NOTES
-              </Typography>
-              <Box sx={{ mt: 1, pl: 2, p: 2, bgcolor: '#f9f9f9', borderRadius: '4px' }}>
-                <Typography variant="body2">{payment.notes}</Typography>
-              </Box>
+          {/* Status Checkboxes */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="body2" gutterBottom>
+              Quantity received according to order:
+              {' □ YES  ■ NO'}
+            </Typography>
+            <Typography variant="body2" gutterBottom>
+              Damages:
+              {' ■ YES  □ NO'}
+            </Typography>
+            <Typography variant="body2" gutterBottom>
+              Payment received:
+              {' ■ YES  □ NO'}
+            </Typography>
+          </Box>
+
+          {/* QR Code */}
+          {qrCodeDataURL && (
+            <Box sx={{ textAlign: 'center', mb: 3 }}>
+              <img src={qrCodeDataURL} alt="QR Code" style={{ width: '100px', height: 'auto' }} />
             </Box>
           )}
 
-          <Divider sx={{ my: 3 }} />
-
-          {/* Footer */}
-          <Box sx={{ textAlign: 'center' }}>
-            <Typography variant="caption" color="text.secondary" display="block">
-              Property Management System | Kampala, Uganda
-            </Typography>
-            <Typography variant="caption" color="text.secondary" display="block">
-              Phone: +256 XXX XXX XXX | Email: info@propertymanagement.com | Website: www.propertymanagement.com
-            </Typography>
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-              Generated on: {format(new Date(), 'dd MMM yyyy HH:mm:ss')}
-            </Typography>
-          </Box>
+          {/* Footer Table */}
+          <TableContainer sx={{ mb: 2 }}>
+            <Table size="small" sx={{ border: '1px solid #333' }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 'bold', border: '1px solid #333', textAlign: 'center' }}>DATE</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', border: '1px solid #333', textAlign: 'center' }}>M.O.P</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', border: '1px solid #333', textAlign: 'center' }}>AMOUNT</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', border: '1px solid #333', textAlign: 'center' }}>TRANS ID</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', border: '1px solid #333', textAlign: 'center' }}>NAME</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', border: '1px solid #333', textAlign: 'center' }}>SIGN</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell sx={{ border: '1px solid #333', textAlign: 'center' }}>
+                    {format(issueDate, 'yyyy-MM-dd')}
+                  </TableCell>
+                  <TableCell sx={{ border: '1px solid #333', textAlign: 'center', textTransform: 'uppercase' }}>
+                    {payment.paymentMethod ? 
+                      payment.paymentMethod === 'mobile_money_mtn' ? 'Mobile Money MTN' :
+                      payment.paymentMethod === 'mobile_money_airtel' ? 'Mobile Money Airtel' :
+                      payment.paymentMethod.replace('_', ' ') 
+                      : 'Cash'}
+                  </TableCell>
+                  <TableCell sx={{ border: '1px solid #333', textAlign: 'center' }}>
+                    USh {total.toLocaleString()}
+                  </TableCell>
+                  <TableCell sx={{ border: '1px solid #333', textAlign: 'center' }}>
+                    {payment.transactionId || '-'}
+                  </TableCell>
+                  <TableCell sx={{ border: '1px solid #333', textAlign: 'center' }}>
+                    {tenant?.companyName || payment.tenantName || '-'}
+                  </TableCell>
+                  <TableCell sx={{ border: '1px solid #333' }}></TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Paper>
       </DialogContent>
     </Dialog>

@@ -44,7 +44,6 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import ResponsiveContainer from '../components/common/ResponsiveContainer';
 import ResponsiveHeader from '../components/common/ResponsiveHeader';
 import { useAuth } from '../contexts/AuthContext';
-import AuthDebug from '../components/AuthDebug';
 
 const PropertiesPage = () => {
   const navigate = useNavigate();
@@ -244,9 +243,6 @@ const PropertiesPage = () => {
           </Button>,
         ]}
       />
-
-      {/* Debug Info - Remove in production */}
-      <AuthDebug />
 
       {/* Property Statistics */}
       <Grid container spacing={3} sx={{ mb: 4 }}>

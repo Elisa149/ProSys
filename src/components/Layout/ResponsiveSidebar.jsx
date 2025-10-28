@@ -138,6 +138,18 @@ const getAllNavigationItems = (userRole, hasPermission, hasAnyPermission, hasRol
     });
   }
 
+  // Invoices
+  if (hasRole('super_admin') || hasAnyPermission(['payments:create:organization', 'payments:create:assigned', 'properties:read:assigned'])) {
+    items.push({
+      text: 'Invoices',
+      icon: <Receipt />,
+      path: '/app/invoices',
+      subtitle: 'Generate & manage invoices',
+      show: true,
+      section: 'main',
+    });
+  }
+
   // Payments
   if (hasRole('super_admin') || hasAnyPermission(['payments:read:organization', 'payments:read:assigned'])) {
     items.push({

@@ -82,6 +82,8 @@ const getPaymentMethodColor = (method) => {
     check: 'info',
     online: 'secondary',
     credit_card: 'warning',
+    mobile_money_mtn: 'secondary',
+    mobile_money_airtel: 'info',
     other: 'default',
   };
   return colors[method] || 'default';
@@ -510,6 +512,8 @@ const PaymentsPage = () => {
                 <MenuItem value="check">Check</MenuItem>
                 <MenuItem value="online">Online</MenuItem>
                 <MenuItem value="credit_card">Credit Card</MenuItem>
+                <MenuItem value="mobile_money_mtn">Mobile Money MTN</MenuItem>
+                <MenuItem value="mobile_money_airtel">Mobile Money Airtel</MenuItem>
                 <MenuItem value="other">Other</MenuItem>
               </Select>
             </FormControl>
@@ -567,9 +571,11 @@ const PaymentsPage = () => {
                 <TableCell><strong>Date</strong></TableCell>
                 <TableCell><strong>Tenant</strong></TableCell>
                 <TableCell><strong>Property</strong></TableCell>
+                <TableCell><strong>Invoice #</strong></TableCell>
                 <TableCell><strong>Amount</strong></TableCell>
                 <TableCell><strong>Late Fee</strong></TableCell>
                 <TableCell><strong>Method</strong></TableCell>
+                <TableCell><strong>Installment</strong></TableCell>
                 <TableCell><strong>Status</strong></TableCell>
                 <TableCell><strong>Transaction ID</strong></TableCell>
                 <TableCell><strong>Actions</strong></TableCell>
@@ -578,7 +584,7 @@ const PaymentsPage = () => {
             <TableBody>
               {filteredPayments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} align="center">
+                  <TableCell colSpan={11} align="center">
                     <Box sx={{ py: 4 }}>
                       <Receipt sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
                       <Typography variant="body1" color="text.secondary" gutterBottom>
@@ -620,6 +626,11 @@ const PaymentsPage = () => {
                       </Box>
                     </TableCell>
                     <TableCell>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+                        {payment.invoiceNumber || payment.invoiceId?.slice(-8) || '-'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
                       <Typography variant="body2" fontWeight="bold" color="success.main">
                         {formatCurrency(payment.amount)}
                       </Typography>
@@ -637,6 +648,14 @@ const PaymentsPage = () => {
                       <Chip
                         label={payment.paymentMethod?.replace('_', ' ').toUpperCase() || 'CASH'}
                         color={getPaymentMethodColor(payment.paymentMethod)}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={`#${payment.installmentNumber || 1}`}
+                        color="info"
                         size="small"
                         variant="outlined"
                       />
