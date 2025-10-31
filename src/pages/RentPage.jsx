@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import {
@@ -24,6 +24,7 @@ import {
   DialogActions,
   TextField,
   FormControl,
+  FormHelperText,
   InputLabel,
   Select,
   MenuItem,
@@ -65,8 +66,10 @@ import ResponsiveHeader from '../components/common/ResponsiveHeader';
 import ResponsiveTable from '../components/common/ResponsiveTable';
 import PropertySelectorDialog from '../components/PropertySelectorDialog';
 import PaymentReceipt from '../components/PaymentReceipt';
+import RentReceipt from '../components/RentReceipt';
 import CorporatePaymentSlip from '../components/CorporatePaymentSlip';
 import ClearCacheButton from '../components/ClearCacheButton';
+import confirmAction from '../utils/confirmAction';
 
 // Helper functions
 const formatCurrency = (amount) => {
@@ -145,9 +148,16 @@ const RentPage = () => {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedRent, setSelectedRent] = useState(null);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
+  const [rentReceiptDialogOpen, setRentReceiptDialogOpen] = useState(false);
   const [lastCreatedPayment, setLastCreatedPayment] = useState(null);
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [invoiceData, setInvoiceData] = useState(null);
+  const [invoicePeriodDialogOpen, setInvoicePeriodDialogOpen] = useState(false);
+  const [invoiceRentContext, setInvoiceRentContext] = useState(null);
+  const [availableBillingPeriods, setAvailableBillingPeriods] = useState([]);
+  const [invoicePeriodSelection, setInvoicePeriodSelection] = useState({ month: null, year: null });
+  const [invoiceCreationLoading, setInvoiceCreationLoading] = useState(false);
+  const invoiceDialogToastShownRef = useRef(false);
   
   const [newPayment, setNewPayment] = useState({
     invoiceId: '',
@@ -463,12 +473,262 @@ const RentPage = () => {
       status: 'completed',
     };
     
+    const amountLabel = Number.isFinite(paymentData.amount)
+      ? ` of UGX ${paymentData.amount.toLocaleString()}`
+      : '';
+    const tenantLabel = selectedRent?.tenantName ? ` for ${selectedRent.tenantName}` : '';
+    if (!confirmAction(`Record payment${amountLabel}${tenantLabel}?`)) {
+      return;
+    }
+
     createPaymentMutation.mutate(paymentData);
+  };
+
+  const getExistingBillingPeriods = useCallback((rentId) => {
+    const periodSet = new Set();
+    if (!rentId) return periodSet;
+
+    invoices
+      .filter(inv => inv.rentId === rentId)
+      .forEach(inv => {
+        let month = typeof inv.billingMonth === 'number' ? inv.billingMonth : undefined;
+        let year = typeof inv.billingYear === 'number' ? inv.billingYear : undefined;
+
+        if (month === undefined || year === undefined) {
+          const referenceDate = inv.invoiceDate instanceof Date
+            ? inv.invoiceDate
+            : inv.createdAt instanceof Date
+              ? inv.createdAt
+              : inv.dueDate instanceof Date
+                ? inv.dueDate
+                : null;
+
+          if (referenceDate && !Number.isNaN(referenceDate.getTime())) {
+            month = referenceDate.getMonth();
+            year = referenceDate.getFullYear();
+          }
+        }
+
+        if (month !== undefined && year !== undefined) {
+          periodSet.add(`${year}-${month}`);
+        }
+      });
+
+    return periodSet;
+  }, [invoices]);
+
+  const buildLeasePeriodOptions = useCallback((rent) => {
+    if (!rent) return [];
+    const today = new Date();
+
+    const leaseStartSource = rent.leaseStart || rent.startDate || rent.createdAt;
+    let leaseStartDate = leaseStartSource ? new Date(leaseStartSource) : new Date(today.getFullYear(), today.getMonth(), 1);
+    if (Number.isNaN(leaseStartDate.getTime())) {
+      leaseStartDate = new Date(today.getFullYear(), today.getMonth(), 1);
+    }
+    leaseStartDate = new Date(leaseStartDate.getFullYear(), leaseStartDate.getMonth(), 1);
+
+    const leaseEndSource = rent.leaseEnd || rent.endDate;
+    let leaseEndDate = leaseEndSource ? new Date(leaseEndSource) : null;
+    if (!leaseEndDate || Number.isNaN(leaseEndDate.getTime())) {
+      leaseEndDate = new Date(today.getFullYear(), today.getMonth() + 12, 1);
+    } else {
+      leaseEndDate = new Date(leaseEndDate.getFullYear(), leaseEndDate.getMonth(), 1);
+    }
+
+    if (leaseEndDate < leaseStartDate) {
+      leaseEndDate = new Date(leaseStartDate);
+    }
+
+    const usedPeriods = getExistingBillingPeriods(rent.id);
+    const options = [];
+    const cursor = new Date(leaseStartDate);
+    let guard = 0;
+
+    while (cursor <= leaseEndDate && guard < 240) {
+      const month = cursor.getMonth();
+      const year = cursor.getFullYear();
+      const key = `${year}-${month}`;
+
+      options.push({
+        key,
+        month,
+        year,
+        label: format(cursor, 'MMMM yyyy'),
+        disabled: usedPeriods.has(key),
+      });
+
+      cursor.setMonth(cursor.getMonth() + 1);
+      guard += 1;
+    }
+
+    return options;
+  }, [getExistingBillingPeriods]);
+
+  const formatLeasePeriod = useCallback((rent) => {
+    if (!rent) return 'N/A';
+    const startSource = rent.leaseStart || rent.startDate || rent.createdAt;
+    const endSource = rent.leaseEnd || rent.endDate;
+
+    const startDate = startSource ? new Date(startSource) : null;
+    const endDate = endSource ? new Date(endSource) : null;
+
+    const startLabel = startDate && !Number.isNaN(startDate.getTime()) ? format(startDate, 'MMM yyyy') : 'N/A';
+    const endLabel = endDate && !Number.isNaN(endDate.getTime()) ? format(endDate, 'MMM yyyy') : 'Ongoing';
+    return `${startLabel} - ${endLabel}`;
+  }, []);
+
+  useEffect(() => {
+    if (invoiceRentContext && invoicePeriodDialogOpen) {
+      const options = buildLeasePeriodOptions(invoiceRentContext);
+      setAvailableBillingPeriods(options);
+
+      setInvoicePeriodSelection((prev) => {
+        const currentKey = prev && prev.year !== null && prev.month !== null
+          ? `${prev.year}-${prev.month}`
+          : null;
+        const currentValid = currentKey
+          ? options.some(option => option.key === currentKey && !option.disabled)
+          : false;
+
+        if (currentValid) {
+          return prev;
+        }
+
+        const firstAvailable = options.find(option => !option.disabled);
+        if (firstAvailable) {
+          return { month: firstAvailable.month, year: firstAvailable.year };
+        }
+
+        return { month: null, year: null };
+      });
+
+      if (!invoiceDialogToastShownRef.current) {
+        if (options.length === 0) {
+          toast.error('No billing periods available for this lease.');
+          invoiceDialogToastShownRef.current = true;
+        } else if (options.every(option => option.disabled)) {
+          toast.error('All billing periods for this lease already have invoices.');
+          invoiceDialogToastShownRef.current = true;
+        }
+      }
+    }
+  }, [invoiceRentContext, invoicePeriodDialogOpen, invoices, buildLeasePeriodOptions]);
+
+  const openInvoiceDialogForRent = (rent) => {
+    if (!rent) return;
+    invoiceDialogToastShownRef.current = false;
+    setInvoiceRentContext(rent);
+    setInvoicePeriodDialogOpen(true);
+  };
+
+  const closeInvoiceDialog = () => {
+    setInvoicePeriodDialogOpen(false);
+    setInvoiceRentContext(null);
+    setAvailableBillingPeriods([]);
+    setInvoicePeriodSelection({ month: null, year: null });
+    invoiceDialogToastShownRef.current = false;
+  };
+
+  const handleInvoicePeriodSelect = (event) => {
+    const value = event.target.value;
+    if (!value) {
+      setInvoicePeriodSelection({ month: null, year: null });
+      return;
+    }
+    const [yearStr, monthStr] = value.split('-');
+    const parsedMonth = Number(monthStr);
+    const parsedYear = Number(yearStr);
+    if (!Number.isNaN(parsedMonth) && !Number.isNaN(parsedYear)) {
+      setInvoicePeriodSelection({ month: parsedMonth, year: parsedYear });
+    }
+  };
+
+  const handleInvoiceCreation = async () => {
+    if (!invoiceRentContext) return;
+    if (invoicePeriodSelection.month === null || invoicePeriodSelection.year === null) {
+      toast.error('Select a billing period to continue.');
+      return;
+    }
+
+    const selectionKey = `${invoicePeriodSelection.year}-${invoicePeriodSelection.month}`;
+    const selectedOption = availableBillingPeriods.find(option => option.key === selectionKey);
+
+    if (!selectedOption) {
+      toast.error('Selected billing period is no longer available.');
+      return;
+    }
+
+    if (selectedOption.disabled) {
+      toast.error('Selected billing period already has an invoice.');
+      return;
+    }
+
+    try {
+      setInvoiceCreationLoading(true);
+
+      const billingDate = new Date(invoicePeriodSelection.year, invoicePeriodSelection.month, 1);
+      const lastDayOfMonth = new Date(invoicePeriodSelection.year, invoicePeriodSelection.month + 1, 0).getDate();
+      const dueDay = invoiceRentContext.paymentDueDate || 1;
+      const dueDate = new Date(
+        invoicePeriodSelection.year,
+        invoicePeriodSelection.month,
+        Math.min(dueDay, lastDayOfMonth)
+      );
+      const invoiceNumber = `INV-${format(billingDate, 'yyyyMM')}-${(invoiceRentContext.id || '').toString().slice(-4).padStart(4, '0')}`;
+
+      const invoicePayload = {
+        rentId: invoiceRentContext.id,
+        invoiceNumber,
+        tenantName: invoiceRentContext.tenantName,
+        tenantId: invoiceRentContext.tenantId || null,
+        propertyName: invoiceRentContext.propertyName,
+        propertyId: invoiceRentContext.propertyId,
+        spaceName: invoiceRentContext.spaceName,
+        organizationId: invoiceRentContext.organizationId || effectiveOrganizationId || null,
+        invoiceDate: new Date(),
+        totalAmount: invoiceRentContext.monthlyRent,
+        amountDue: invoiceRentContext.monthlyRent,
+        amountPaid: 0,
+        dueDate,
+        status: 'pending',
+        description: `Monthly rent for ${invoiceRentContext.propertyName}${invoiceRentContext.spaceName ? ` - ${invoiceRentContext.spaceName}` : ''} (${format(billingDate, 'MMMM yyyy')})`,
+        billingMonth: invoicePeriodSelection.month,
+        billingYear: invoicePeriodSelection.year,
+        billingPeriodLabel: format(billingDate, 'MMMM yyyy'),
+      };
+
+      const result = await invoiceService.create(
+        invoicePayload,
+        effectiveUserId,
+        effectiveUserRole,
+        effectiveOrganizationId
+      );
+
+      if (result) {
+        toast.success(`Invoice generated for ${invoiceRentContext.tenantName}`);
+        queryClient.invalidateQueries(['invoices', effectiveUserId, effectiveUserRole, effectiveOrganizationId]);
+        queryClient.invalidateQueries(['invoices']);
+        closeInvoiceDialog();
+      }
+    } catch (error) {
+      toast.error(`Failed to generate invoice: ${error.message}`);
+    } finally {
+      setInvoiceCreationLoading(false);
+    }
   };
 
   const getInitials = (name) => {
     return name?.split(' ').map(n => n[0]).join('').toUpperCase() || '?';
   };
+
+  const selectedBillingKey = invoicePeriodSelection.year !== null && invoicePeriodSelection.month !== null
+    ? `${invoicePeriodSelection.year}-${invoicePeriodSelection.month}`
+    : '';
+  const selectedBillingOption = selectedBillingKey
+    ? availableBillingPeriods.find(option => option.key === selectedBillingKey)
+    : null;
+  const selectionDisabled = selectedBillingOption ? selectedBillingOption.disabled : false;
 
   return (
     <ResponsiveContainer>
@@ -764,66 +1024,14 @@ const RentPage = () => {
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
-                        <Tooltip title="Generate Invoice">
-                          <IconButton 
-                            size="small"
-                            color="primary"
-                            onClick={async () => {
-                              try {
-                                // Generate invoice for this tenant
-                                const invoiceData = {
-                                  rentId: rent.id,
-                                  invoiceNumber: `INV-${format(new Date(), 'yyyyMMdd')}-${rent.id.slice(-4)}`,
-                                  tenantName: rent.tenantName,
-                                  propertyName: rent.propertyName,
-                                  spaceName: rent.spaceName,
-                                  propertyId: rent.propertyId,
-                                  totalAmount: rent.monthlyRent,
-                                  amountDue: rent.monthlyRent,
-                                  amountPaid: 0,
-                                  dueDate: rent.nextDueDate,
-                                  status: 'pending',
-                                  description: `Monthly rent for ${rent.propertyName}${rent.spaceName ? ` - ${rent.spaceName}` : ''}`,
-                                };
-                                const result = await invoiceService.create(invoiceData, effectiveUserId, effectiveUserRole, effectiveOrganizationId);
-                                if (result) {
-                                  toast.success(`Invoice generated for ${rent.tenantName}`);
-                                  queryClient.invalidateQueries(['invoices']);
-                                }
-                              } catch (error) {
-                                toast.error(`Failed to generate invoice: ${error.message}`);
-                              }
-                            }}
-                          >
-                            <Add />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="View Invoices">
-                          <IconButton 
-                            size="small"
-                            onClick={() => {
-                              navigate('/app/invoices');
-                            }}
-                          >
-                            <Receipt />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="View Property">
-                          <IconButton 
-                            size="small"
-                            onClick={() => navigate(`/app/properties/${rent.propertyId}`)}
-                          >
-                            <Visibility />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Manage Space">
-                          <IconButton 
-                            size="small"
-                            onClick={() => navigate(`/app/properties/${rent.propertyId}/spaces`)}
-                          >
-                            <Edit />
-                          </IconButton>
-                        </Tooltip>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<Add />}
+                          onClick={() => openInvoiceDialogForRent(rent)}
+                        >
+                          Generate Invoice
+                        </Button>
                       </Box>
                     </TableCell>
                   </TableRow>
@@ -904,7 +1112,7 @@ const RentPage = () => {
                       </TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
-                          <Tooltip title="View">
+                          <Tooltip title="View Receipt">
                             <IconButton
                               size="small"
                               onClick={() => {
@@ -913,6 +1121,18 @@ const RentPage = () => {
                               }}
                             >
                               <Visibility />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Rent Receipt">
+                            <IconButton
+                              size="small"
+                              color="success"
+                              onClick={() => {
+                                setLastCreatedPayment(payment);
+                                setRentReceiptDialogOpen(true);
+                              }}
+                            >
+                              <Receipt />
                             </IconButton>
                           </Tooltip>
                         </Box>
@@ -1023,6 +1243,93 @@ const RentPage = () => {
         )}
       </TabPanel>
 
+      {/* Invoice Billing Period Dialog */}
+      <Dialog
+        open={invoicePeriodDialogOpen}
+        onClose={(event, reason) => {
+          if (invoiceCreationLoading) {
+            return;
+          }
+          closeInvoiceDialog();
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Select Billing Period</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Choose the month and year within the lease period to invoice {invoiceRentContext?.tenantName || 'this tenant'}.
+          </Typography>
+          <FormControl
+            fullWidth
+            margin="normal"
+            disabled={availableBillingPeriods.length === 0}
+          >
+            <InputLabel>Billing Period *</InputLabel>
+            <Select
+              value={selectedBillingKey}
+              label="Billing Period *"
+              onChange={handleInvoicePeriodSelect}
+              displayEmpty
+              renderValue={(value) => {
+                if (!value) {
+                  return (
+                    <Typography variant="body2" color="text.secondary">
+                      Select billing period
+                    </Typography>
+                  );
+                }
+                const option = availableBillingPeriods.find(opt => opt.key === value);
+                return option ? option.label : value;
+              }}
+            >
+              <MenuItem value="" disabled>
+                Select billing period
+              </MenuItem>
+              {availableBillingPeriods.map(option => (
+                <MenuItem key={option.key} value={option.key} disabled={option.disabled}>
+                  {option.label}
+                  {option.disabled && (
+                    <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                      (Invoiced)
+                    </Typography>
+                  )}
+                </MenuItem>
+              ))}
+            </Select>
+            {availableBillingPeriods.length === 0 && (
+              <FormHelperText error>
+                No billing periods are available for this lease. Confirm the lease dates.
+              </FormHelperText>
+            )}
+            {availableBillingPeriods.length > 0 && availableBillingPeriods.every(option => option.disabled) && (
+              <FormHelperText error>
+                All billing periods for this lease already have invoices.
+              </FormHelperText>
+            )}
+          </FormControl>
+          {invoiceRentContext && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="caption" color="text.secondary">
+                Lease period: {formatLeasePeriod(invoiceRentContext)}
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeInvoiceDialog} disabled={invoiceCreationLoading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleInvoiceCreation}
+            variant="contained"
+            disabled={invoiceCreationLoading || !selectedBillingKey || selectionDisabled}
+          >
+            {invoiceCreationLoading ? 'Generating...' : 'Generate Invoice'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Property Selector Dialog for New Tenant Assignment */}
       <PropertySelectorDialog 
         open={propertyDialog}
@@ -1035,6 +1342,13 @@ const RentPage = () => {
         payment={lastCreatedPayment}
         open={receiptDialogOpen}
         onClose={() => setReceiptDialogOpen(false)}
+      />
+
+      {/* Rent Receipt Dialog */}
+      <RentReceipt
+        payment={lastCreatedPayment}
+        open={rentReceiptDialogOpen}
+        onClose={() => setRentReceiptDialogOpen(false)}
       />
 
       {/* Invoice Dialog */}

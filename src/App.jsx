@@ -19,6 +19,7 @@ import CreatePropertyPage from './pages/CreatePropertyPage';
 import PropertyDetailsPage from './pages/PropertyDetailsPage';
 import SpaceAssignmentPage from './pages/SpaceAssignmentPage';
 import AllSpacesPage from './pages/AllSpacesPage';
+import SpacesByPropertyPage from './pages/SpacesByPropertyPage';
 import TenantsPage from './pages/TenantsPage';
 import RentPage from './pages/RentPage';
 import PaymentsPage from './pages/PaymentsPage';
@@ -146,6 +147,7 @@ function App() {
           <Route path="properties/:id" element={<PropertyDetailsPage />} />
           <Route path="properties/:id/spaces" element={<SpaceAssignmentPage />} />
           <Route path="spaces" element={<AllSpacesPage />} />
+          <Route path="spaces-by-property" element={<SpacesByPropertyPage />} />
           <Route path="tenants" element={<TenantsPage />} />
 
           {/* Rent Management */}

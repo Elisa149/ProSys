@@ -26,6 +26,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import ResponsiveSidebar from './ResponsiveSidebar';
 
 const drawerWidth = 240;
+const collapsedDrawerWidth = 72;
 
 const Layout = () => {
   const theme = useTheme();
@@ -33,10 +34,15 @@ const Layout = () => {
   const { user, logout } = useAuth();
   
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
+  };
+
+  const handleSidebarCollapseToggle = () => {
+    setSidebarCollapsed(prev => !prev);
   };
 
   const handleProfileMenuOpen = (event) => {
@@ -58,6 +64,7 @@ const Layout = () => {
 
   const drawer = (
     <ResponsiveSidebar
+      collapsed={sidebarCollapsed && !isMobile}
       onItemClick={() => {
         if (isMobile) {
           setMobileOpen(false);
@@ -72,9 +79,13 @@ const Layout = () => {
       <AppBar
         position="fixed"
         sx={{
-          width: { md: `calc(100% - ${drawerWidth}px)` },
-          ml: { md: `${drawerWidth}px` },
+          width: { md: `calc(100% - ${(sidebarCollapsed ? collapsedDrawerWidth : drawerWidth)}px)` },
+          ml: { md: `${sidebarCollapsed ? collapsedDrawerWidth : drawerWidth}px` },
           zIndex: theme.zIndex.drawer + 1,
+          transition: theme.transitions.create(['width', 'margin'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
         }}
       >
         <Toolbar sx={{ minHeight: isMobile ? 56 : 64 }}>
@@ -84,6 +95,14 @@ const Layout = () => {
             edge="start"
             onClick={handleDrawerToggle}
             sx={{ mr: 2, display: { md: 'none' } }}
+          >
+            <MenuIcon />
+          </IconButton>
+          <IconButton
+            color="inherit"
+            aria-label="collapse sidebar"
+            onClick={handleSidebarCollapseToggle}
+            sx={{ mr: 2, display: { xs: 'none', md: 'inline-flex' } }}
           >
             <MenuIcon />
           </IconButton>
@@ -176,7 +195,7 @@ const Layout = () => {
       {/* Sidebar */}
       <Box
         component="nav"
-        sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}
+        sx={{ width: { md: (sidebarCollapsed ? collapsedDrawerWidth : drawerWidth) }, flexShrink: { md: 0 }, transition: theme.transitions.create('width', { duration: theme.transitions.duration.shortest }) }}
         aria-label="navigation menu"
       >
         {/* Mobile drawer */}
@@ -206,9 +225,10 @@ const Layout = () => {
             display: { xs: 'none', md: 'block' },
             '& .MuiDrawer-paper': { 
               boxSizing: 'border-box', 
-              width: drawerWidth,
+              width: sidebarCollapsed ? collapsedDrawerWidth : drawerWidth,
               borderRight: '1px solid',
               borderColor: 'divider',
+              transition: theme.transitions.create('width', { duration: theme.transitions.duration.shortest })
             },
           }}
           open
@@ -223,11 +243,12 @@ const Layout = () => {
         sx={{
           flexGrow: 1,
           p: { xs: 2, sm: 3 },
-          width: { md: `calc(100% - ${drawerWidth}px)` },
+          width: { md: `calc(100% - ${(sidebarCollapsed ? collapsedDrawerWidth : drawerWidth)}px)` },
           mt: { xs: '56px', md: '64px' }, // Responsive AppBar height
           minHeight: { xs: 'calc(100vh - 56px)', md: 'calc(100vh - 64px)' },
           backgroundColor: 'background.default',
           overflow: 'auto',
+          transition: theme.transitions.create('width', { duration: theme.transitions.duration.leavingScreen })
         }}
       >
         <Box sx={{ 

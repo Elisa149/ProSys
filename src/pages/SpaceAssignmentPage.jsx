@@ -60,6 +60,9 @@ import toast from 'react-hot-toast';
 import { propertyService, rentService } from '../services/firebaseService';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import { storage } from '../config/firebase';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import confirmAction from '../utils/confirmAction';
 
 const SpaceAssignmentPage = () => {
   const { id } = useParams();
@@ -89,6 +92,7 @@ const SpaceAssignmentPage = () => {
     notes: '',
     agreementType: 'standard', // standard, custom
   });
+  const [agreementFiles, setAgreementFiles] = useState([]);
 
   // Fetch property details from Firebase
   const {
@@ -173,6 +177,7 @@ const SpaceAssignmentPage = () => {
       notes: '',
       agreementType: 'standard',
     });
+    setAgreementFiles([]);
     setAssignmentDialog(true);
   };
 
@@ -208,7 +213,7 @@ const SpaceAssignmentPage = () => {
     setTenantForm(newForm);
   };
 
-  const handleAssignSpace = () => {
+  const handleAssignSpace = async () => {
     // Validate required fields - only tenant info and lease start
     if (!selectedSpace || !tenantForm.tenantName || !tenantForm.tenantPhone || !tenantForm.leaseStart) {
       toast.error('Please fill in tenant name, phone, and lease start date');
@@ -251,6 +256,34 @@ const SpaceAssignmentPage = () => {
       agreementType: tenantForm.agreementType,
       notes: tenantForm.notes,
     };
+    // Optional: upload handwritten agreements if provided
+    if (agreementFiles && agreementFiles.length > 0) {
+      try {
+        const uploadedDocs = [];
+        for (const file of agreementFiles) {
+          const ext = (file.name.split('.').pop() || 'dat').toLowerCase();
+          const safeBase = file.name.replace(/[^a-z0-9\-_.]+/gi, '_');
+          const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}-${safeBase}.${ext}`;
+          const path = `agreements/${id}/${selectedSpace.spaceId || selectedSpace.squatterId}/${fileName}`;
+          const ref = storageRef(storage, path);
+          // eslint-disable-next-line no-await-in-loop
+          const uploaded = await uploadBytes(ref, file);
+          // eslint-disable-next-line no-await-in-loop
+          const url = await getDownloadURL(uploaded.ref);
+          uploadedDocs.push({ name: file.name, url, path });
+        }
+        assignmentData.agreements = uploadedDocs;
+      } catch (err) {
+        console.error('Failed to upload agreement documents:', err);
+        toast.error('Failed to upload some documents. You can continue without them.');
+      }
+    }
+
+    const tenantLabel = tenantForm.tenantName || 'this tenant';
+    const spaceLabel = selectedSpace?.spaceName || selectedSpace?.assignedArea || 'this space';
+    if (!confirmAction(`Confirm assigning ${tenantLabel} to ${spaceLabel}?`)) {
+      return;
+    }
 
     assignSpaceMutation.mutate(assignmentData);
   };
@@ -300,7 +333,7 @@ const SpaceAssignmentPage = () => {
     <Box>
       {/* Header */}
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
-        <IconButton onClick={() => navigate(`/app/properties/${id}`)}>
+        <IconButton onClick={() => navigate('/app/spaces-by-property')}>
           <ArrowBack />
         </IconButton>
         <Box>
@@ -364,6 +397,44 @@ const SpaceAssignmentPage = () => {
           </Grid>
         </Grid>
       </Paper>
+
+      {/* Agreements List (aggregated) */}
+      {rentRecords.some(r => r.agreements && r.agreements.length > 0) && (
+        <Paper sx={{ p: 3, mb: 4 }}>
+          <Typography variant="h6" gutterBottom>
+            📎 Agreements on File
+          </Typography>
+          <List>
+            {rentRecords.filter(r => r.agreements && r.agreements.length > 0).map((r) => (
+              r.agreements.map((doc, idx) => (
+                <ListItem key={`${r.id}-${idx}`}>
+                  <ListItemAvatar>
+                    <Avatar>
+                      <Description />
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={doc.name || 'Document'}
+                    secondary={`${r.tenantName || 'Unknown tenant'} • ${r.spaceName || 'Space'}`}
+                  />
+                  <ListItemSecondaryAction>
+                    <Button
+                      component="a"
+                      href={doc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      size="small"
+                      variant="outlined"
+                    >
+                      Open
+                    </Button>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))
+            ))}
+          </List>
+        </Paper>
+      )}
 
       {/* Building Spaces */}
       {property.type === 'building' && property.buildingDetails?.floors && (
@@ -434,6 +505,27 @@ const SpaceAssignmentPage = () => {
                                 <Typography variant="body2" color="text.secondary">
                                   Lease: {tenant.leaseStart && !isNaN(new Date(tenant.leaseStart)) ? format(new Date(tenant.leaseStart), 'MMM yyyy') : 'N/A'} - {tenant.leaseEnd && !isNaN(new Date(tenant.leaseEnd)) ? format(new Date(tenant.leaseEnd), 'MMM yyyy') : 'Ongoing'}
                                 </Typography>
+                                {tenant.agreements && tenant.agreements.length > 0 && (
+                                  <Box sx={{ mt: 1 }}>
+                                    <Typography variant="body2" fontWeight="bold" sx={{ mb: 0.5 }}>
+                                      Agreements:
+                                    </Typography>
+                                    {tenant.agreements.map((doc, idx) => (
+                                      <Button
+                                        key={idx}
+                                        component="a"
+                                        href={doc.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        size="small"
+                                        sx={{ mr: 1, mb: 1 }}
+                                        variant="outlined"
+                                      >
+                                        {doc.name || 'Document'}
+                                      </Button>
+                                    ))}
+                                  </Box>
+                                )}
                               </Box>
                             )}
 
@@ -547,6 +639,27 @@ const SpaceAssignmentPage = () => {
                           <Typography variant="body2" color="text.secondary">
                             Lease: {tenant.leaseStart && !isNaN(new Date(tenant.leaseStart)) ? format(new Date(tenant.leaseStart), 'MMM yyyy') : 'N/A'} - {tenant.leaseEnd && !isNaN(new Date(tenant.leaseEnd)) ? format(new Date(tenant.leaseEnd), 'MMM yyyy') : 'Ongoing'}
                           </Typography>
+                          {tenant.agreements && tenant.agreements.length > 0 && (
+                            <Box sx={{ mt: 1 }}>
+                              <Typography variant="body2" fontWeight="bold" sx={{ mb: 0.5 }}>
+                                Agreements:
+                              </Typography>
+                              {tenant.agreements.map((doc, idx) => (
+                                <Button
+                                  key={idx}
+                                  component="a"
+                                  href={doc.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  size="small"
+                                  sx={{ mr: 1, mb: 1 }}
+                                  variant="outlined"
+                                >
+                                  {doc.name || 'Document'}
+                                </Button>
+                              ))}
+                            </Box>
+                          )}
                         </Box>
                       ) : (
                         <Typography variant="body2" color="warning.main" sx={{ mb: 2 }}>
@@ -881,6 +994,33 @@ const SpaceAssignmentPage = () => {
                     ),
                   }}
                 />
+              </Grid>
+
+              {/* Handwritten Agreements upload (optional, multiple) */}
+              <Grid item xs={12}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Handwritten Agreements (optional)
+                </Typography>
+                <Button variant="outlined" component="label" sx={{ mr: 2 }}>
+                  Select Files
+                  <input
+                    type="file"
+                    accept="application/pdf,image/*"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      const files = e.target.files ? Array.from(e.target.files) : [];
+                      setAgreementFiles(files);
+                    }}
+                  />
+                </Button>
+                {agreementFiles && agreementFiles.length > 0 && (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      {agreementFiles.length} file(s) selected
+                    </Typography>
+                  </Box>
+                )}
               </Grid>
             </Grid>
           </Box>

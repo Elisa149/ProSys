@@ -50,6 +50,7 @@ import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import confirmAction from '../utils/confirmAction';
 
 const UserManagementPage = () => {
   const { userRole, organizationId } = useAuth();
@@ -170,6 +171,12 @@ const UserManagementPage = () => {
       return;
     }
 
+    const requesterLabel = selectedRequest?.name || selectedRequest?.email || 'this request';
+    const actionLabel = action === 'approve' ? 'approve' : 'reject';
+    if (!confirmAction(`Confirm ${actionLabel} access request from ${requesterLabel}?`)) {
+      return;
+    }
+
     respondMutation.mutate({
       requestId: selectedRequest.id,
       action,
@@ -187,6 +194,11 @@ const UserManagementPage = () => {
   const handleUpdateRole = () => {
     if (!newRoleId) {
       toast.error('Please select a role');
+      return;
+    }
+
+    const userLabel = selectedUser?.displayName || selectedUser?.email || 'this user';
+    if (!confirmAction(`Update role for ${userLabel}?`)) {
       return;
     }
 

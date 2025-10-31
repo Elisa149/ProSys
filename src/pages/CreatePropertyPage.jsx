@@ -30,6 +30,9 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import SpaceManagement from '../components/SpaceManagement';
 import SquatterManagement from '../components/SquatterManagement';
 import { useAuth } from '../contexts/AuthContext';
+import { storage } from '../config/firebase';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import confirmAction from '../utils/confirmAction';
 
 const propertyTypes = [
   { value: 'land', label: 'Land' },
@@ -107,7 +110,9 @@ const CreatePropertyPage = () => {
     },
   });
 
-  const onSubmit = (data) => {
+  const [imageFile, setImageFile] = useState(null);
+
+  const onSubmit = async (data) => {
     // Check if user has organizationId
     if (!organizationId) {
       toast.error('You must be assigned to an organization to create properties');
@@ -139,6 +144,24 @@ const CreatePropertyPage = () => {
       status: 'vacant',
     };
 
+    // If an image was selected, upload it first
+    if (imageFile) {
+      try {
+        const orgIdForPath = organizationId || 'no-org';
+        const fileExt = imageFile.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+        const path = `properties/${orgIdForPath}/${fileName}`;
+        const ref = storageRef(storage, path);
+        const uploaded = await uploadBytes(ref, imageFile);
+        const url = await getDownloadURL(uploaded.ref);
+        propertyData.imageUrl = url;
+        propertyData.imagePath = path;
+      } catch (err) {
+        console.error('Failed to upload property image:', err);
+        toast.error('Failed to upload image. You can try again or continue without it.');
+      }
+    }
+
     // Add building details if building type
     if (data.type === 'building') {
       // Calculate totals from floors
@@ -158,6 +181,11 @@ const CreatePropertyPage = () => {
         ...landDetails,
         totalSquatters: landDetails.squatters?.length || 0,
       };
+    }
+
+    const propertyLabel = data.name ? `"${data.name}"` : 'this property';
+    if (!confirmAction(`Create property ${propertyLabel}?`)) {
+      return;
     }
 
     createPropertyMutation.mutate(propertyData);
@@ -511,6 +539,34 @@ const CreatePropertyPage = () => {
                 />
               </Grid>
             )}
+
+            {/* Property Picture (Optional) */}
+            <Grid item xs={12} sx={{ mt: 3 }}>
+              <Typography variant="h6" gutterBottom color="primary">
+                🖼️ Property Picture (Optional)
+              </Typography>
+              <Button
+                variant="outlined"
+                component="label"
+                sx={{ mr: 2 }}
+              >
+                Choose Image
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files && e.target.files[0];
+                    if (file) setImageFile(file);
+                  }}
+                />
+              </Button>
+              {imageFile && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Selected: {imageFile.name}
+                </Typography>
+              )}
+            </Grid>
 
             {/* Description */}
             <Grid item xs={12} sx={{ mt: 3 }}>

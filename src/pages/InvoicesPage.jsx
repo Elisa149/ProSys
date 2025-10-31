@@ -55,6 +55,7 @@ import ResponsiveContainer from '../components/common/ResponsiveContainer';
 import ResponsiveHeader from '../components/common/ResponsiveHeader';
 import ClearCacheButton from '../components/ClearCacheButton';
 import CorporatePaymentSlip from '../components/CorporatePaymentSlip';
+import confirmAction from '../utils/confirmAction';
 
 const formatCurrency = (amount) => {
   try {
@@ -204,6 +205,10 @@ const InvoicesPage = () => {
   };
 
   const handleGenerateInvoices = () => {
+    if (!confirmAction('Generate invoices for all active rent agreements?')) {
+      return;
+    }
+
     generateInvoicesMutation.mutate();
   };
 

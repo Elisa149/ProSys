@@ -16,7 +16,6 @@ import {
   TableRow,
   Paper,
   Chip,
-  IconButton,
   TextField,
   FormControl,
   InputLabel,
@@ -25,12 +24,6 @@ import {
   InputAdornment,
   Alert,
   Avatar,
-  Tooltip,
-  Stack,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
 } from '@mui/material';
 import {
   Payment,
@@ -40,16 +33,12 @@ import {
   TrendingUp,
   Receipt,
   CalendarToday,
-  Visibility,
   Download,
-  Print,
   CheckCircle,
   Warning,
   Home,
-  Person,
-  Business,
 } from '@mui/icons-material';
-import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import toast from 'react-hot-toast';
 
 import { paymentService, propertyService } from '../services/firebaseService';
@@ -58,8 +47,6 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import ResponsiveContainer from '../components/common/ResponsiveContainer';
 import ResponsiveHeader from '../components/common/ResponsiveHeader';
 import ResponsiveTable from '../components/common/ResponsiveTable';
-import PaymentReceipt from '../components/PaymentReceipt';
-import CorporatePaymentSlip from '../components/CorporatePaymentSlip';
 import ClearCacheButton from '../components/ClearCacheButton';
 
 // Helper functions
@@ -110,10 +97,6 @@ const PaymentsPage = () => {
     start: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
     end: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
   });
-  const [selectedPayment, setSelectedPayment] = useState(null);
-  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
-  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
-  const [corporateSlipOpen, setCorporateSlipOpen] = useState(false);
 
   // Debug logging - EXTENSIVE
   console.log('💳 PaymentsPage mounted');
@@ -209,6 +192,9 @@ const PaymentsPage = () => {
 
   // Filter and search payments
   const filteredPayments = useMemo(() => {
+    const startDate = dateRange.start ? startOfDay(new Date(dateRange.start)) : null;
+    const endDate = dateRange.end ? endOfDay(new Date(dateRange.end)) : null;
+
     return payments.filter(payment => {
       // Search filter
       const searchLower = searchQuery.toLowerCase();
@@ -227,11 +213,11 @@ const PaymentsPage = () => {
       const matchesStatus = filterStatus === 'all' || payment.status === filterStatus;
 
       // Date range filter
-      const paymentDate = new Date(payment.paymentDate);
-      const matchesDateRange = dateRange.start && dateRange.end
+      const paymentDate = payment.paymentDate ? new Date(payment.paymentDate) : null;
+      const matchesDateRange = startDate && endDate && paymentDate instanceof Date && !isNaN(paymentDate)
         ? isWithinInterval(paymentDate, {
-            start: new Date(dateRange.start),
-            end: new Date(dateRange.end),
+            start: startDate,
+            end: endDate,
           })
         : true;
 
@@ -280,21 +266,6 @@ const PaymentsPage = () => {
       </ResponsiveContainer>
     );
   }
-
-  const handleViewDetails = (payment) => {
-    setSelectedPayment(payment);
-    setDetailsDialogOpen(true);
-  };
-
-  const handleViewReceipt = (payment) => {
-    setSelectedPayment(payment);
-    setReceiptDialogOpen(true);
-  };
-
-  const handleViewCorporateSlip = (payment) => {
-    setSelectedPayment(payment);
-    setCorporateSlipOpen(true);
-  };
 
   const handleExport = () => {
     // Create CSV export
@@ -578,13 +549,12 @@ const PaymentsPage = () => {
                 <TableCell><strong>Installment</strong></TableCell>
                 <TableCell><strong>Status</strong></TableCell>
                 <TableCell><strong>Transaction ID</strong></TableCell>
-                <TableCell><strong>Actions</strong></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredPayments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} align="center">
+                  <TableCell colSpan={10} align="center">
                     <Box sx={{ py: 4 }}>
                       <Receipt sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
                       <Typography variant="body1" color="text.secondary" gutterBottom>
@@ -672,35 +642,6 @@ const PaymentsPage = () => {
                         {payment.transactionId || '-'}
                       </Typography>
                     </TableCell>
-                    <TableCell>
-                      <Stack direction="row" spacing={0.5}>
-                        <Tooltip title="View Details">
-                          <IconButton 
-                            size="small"
-                            onClick={() => handleViewDetails(payment)}
-                          >
-                            <Visibility />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Corporate Invoice">
-                          <IconButton 
-                            size="small"
-                            color="primary"
-                            onClick={() => handleViewCorporateSlip(payment)}
-                          >
-                            <Business />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Print Receipt">
-                          <IconButton 
-                            size="small"
-                            onClick={() => handleViewReceipt(payment)}
-                          >
-                            <Print />
-                          </IconButton>
-                        </Tooltip>
-                      </Stack>
-                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -708,148 +649,6 @@ const PaymentsPage = () => {
           </Table>
         </TableContainer>
       </Paper>
-
-      {/* Payment Details Dialog */}
-      <Dialog 
-        open={detailsDialogOpen} 
-        onClose={() => setDetailsDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Payment Details</DialogTitle>
-        <DialogContent>
-          {selectedPayment && (
-            <Box sx={{ mt: 2 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">
-                    Payment ID
-                  </Typography>
-                  <Typography variant="body2" fontFamily="monospace">
-                    {selectedPayment.id}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">
-                    Date
-                  </Typography>
-                  <Typography variant="body2">
-                    {selectedPayment.paymentDate && format(new Date(selectedPayment.paymentDate), 'MMMM dd, yyyy')}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">
-                    Tenant
-                  </Typography>
-                  <Typography variant="body2" fontWeight="medium">
-                    {selectedPayment.tenantName || 'Unknown'}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">
-                    Property
-                  </Typography>
-                  <Typography variant="body2">
-                    {selectedPayment.propertyName || 'Unknown Property'}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">
-                    Amount
-                  </Typography>
-                  <Typography variant="h6" color="success.main">
-                    {formatCurrency(selectedPayment.amount)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">
-                    Late Fee
-                  </Typography>
-                  <Typography variant="h6" color={selectedPayment.lateFee > 0 ? 'warning.main' : 'text.secondary'}>
-                    {formatCurrency(selectedPayment.lateFee || 0)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">
-                    Payment Method
-                  </Typography>
-                  <Typography variant="body2">
-                    {selectedPayment.paymentMethod?.replace('_', ' ').toUpperCase() || 'CASH'}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">
-                    Status
-                  </Typography>
-                  <Box sx={{ mt: 0.5 }}>
-                    <Chip
-                      label={selectedPayment.status?.toUpperCase() || 'COMPLETED'}
-                      color={getStatusColor(selectedPayment.status)}
-                      size="small"
-                    />
-                  </Box>
-                </Grid>
-                {selectedPayment.transactionId && (
-                  <Grid item xs={12}>
-                    <Typography variant="caption" color="text.secondary">
-                      Transaction ID
-                    </Typography>
-                    <Typography variant="body2" fontFamily="monospace">
-                      {selectedPayment.transactionId}
-                    </Typography>
-                  </Grid>
-                )}
-                {selectedPayment.notes && (
-                  <Grid item xs={12}>
-                    <Typography variant="caption" color="text.secondary">
-                      Notes
-                    </Typography>
-                    <Typography variant="body2">
-                      {selectedPayment.notes}
-                    </Typography>
-                  </Grid>
-                )}
-                <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">
-                    Total Amount
-                  </Typography>
-                  <Typography variant="h5" color="primary.main">
-                    {formatCurrency((selectedPayment.amount || 0) + (selectedPayment.lateFee || 0))}
-                  </Typography>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDetailsDialogOpen(false)}>Close</Button>
-          <Button
-            variant="contained"
-            startIcon={<Print />}
-            onClick={() => {
-              setReceiptDialogOpen(true);
-            }}
-          >
-            Print Receipt
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Payment Receipt Dialog */}
-      <PaymentReceipt
-        payment={selectedPayment}
-        open={receiptDialogOpen}
-        onClose={() => setReceiptDialogOpen(false)}
-      />
-
-      {/* Corporate Payment Slip Dialog */}
-      <CorporatePaymentSlip
-        payment={selectedPayment}
-        property={properties.find(p => p.id === selectedPayment?.propertyId)}
-        tenant={null} // Can be fetched if tenant data is available
-        open={corporateSlipOpen}
-        onClose={() => setCorporateSlipOpen(false)}
-      />
     </ResponsiveContainer>
   );
 };

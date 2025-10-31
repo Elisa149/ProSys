@@ -54,6 +54,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { propertiesAPI, usersAPI } from '../../services/api';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
+import confirmAction from '../../utils/confirmAction';
 
 const PropertyAssignmentPage = () => {
   const navigate = useNavigate();
@@ -156,6 +157,13 @@ const PropertyAssignmentPage = () => {
         updateData.caretakerId = selectedUser;
       }
       
+      const actionLabel = assignmentType === 'manager' ? 'assign as manager' : 'assign as caretaker';
+      const propertyName = property?.name || 'this property';
+      const userName = user?.displayName || user?.name || user?.email || 'the selected user';
+      if (!confirmAction(`Confirm ${actionLabel} for ${userName} on ${propertyName}?`)) {
+        return;
+      }
+
       updateAssignmentMutation.mutate({
         propertyId: selectedProperty,
         data: updateData
@@ -172,6 +180,13 @@ const PropertyAssignmentPage = () => {
       const property = properties.find(p => p.id === propertyId);
       if (!property) return;
 
+      const manager = getUserById(userId);
+      const managerName = manager?.displayName || manager?.name || manager?.email || 'this manager';
+      const propertyName = property.name || 'this property';
+      if (!confirmAction(`Remove ${managerName} from ${propertyName}?`)) {
+        return;
+      }
+
       const updatedManagers = (property.assignedManagers || []).filter(id => id !== userId);
       
       updateAssignmentMutation.mutate({
@@ -187,6 +202,11 @@ const PropertyAssignmentPage = () => {
     try {
       const property = properties.find(p => p.id === propertyId);
       if (!property) return;
+
+      const propertyName = property.name || 'this property';
+      if (!confirmAction(`Remove caretaker from ${propertyName}?`)) {
+        return;
+      }
 
       updateAssignmentMutation.mutate({
         propertyId,

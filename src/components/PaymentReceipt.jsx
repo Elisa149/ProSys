@@ -34,23 +34,34 @@ const PaymentReceipt = ({ payment, open, onClose }) => {
     }
   }, [payment]);
 
-  // Generate QR code
+  // Generate QR code (PMSR2 compact schema)
   useEffect(() => {
     if (payment && invoiceNumber) {
-      const qrData = {
-        invoiceNumber,
-        paymentId: payment.id,
-        amount: payment.amount,
-        tenantName: payment.tenantName,
-        propertyName: payment.propertyName,
-        paymentDate: payment.paymentDate,
-        paymentMethod: payment.paymentMethod,
-        organizationId: payment.organizationId,
-      };
+      const isoDate = payment.paymentDate ? new Date(payment.paymentDate).toISOString() : new Date().toISOString();
+      const sanitize = (val) => String(val ?? '')
+        .replace(/[\n\r]/g, ' ')
+        .replace(/[;]/g, ' ')
+        .trim();
 
-      QRCode.toDataURL(JSON.stringify(qrData), {
+      const qrString = [
+        'PMSR2',
+        `typ=payment`,
+        `org=${sanitize(payment.organizationId)}`,
+        `inv=${sanitize(invoiceNumber)}`,
+        `pid=${sanitize(payment.id)}`,
+        `amt=${sanitize(payment.amount)}`,
+        `ccy=UGX`,
+        `dt=${sanitize(isoDate)}`,
+        `mtd=${sanitize(payment.paymentMethod || 'cash')}`,
+        `ten=${sanitize(payment.tenantName)}`,
+        `prop=${sanitize(payment.propertyName)}`,
+        payment.transactionId ? `txn=${sanitize(payment.transactionId)}` : null,
+      ].filter(Boolean).join(';');
+
+      QRCode.toDataURL(qrString, {
         width: 150,
         margin: 2,
+        errorCorrectionLevel: 'M',
         color: {
           dark: '#000000',
           light: '#FFFFFF',
@@ -339,6 +350,23 @@ const PaymentReceipt = ({ payment, open, onClose }) => {
             },
           }}
         >
+          {/* QR Top-Left */}
+          {qrCodeDataURL && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 8,
+                left: 8,
+                p: 0.6,
+                border: '2px solid #e0e0e0',
+                borderRadius: '4px',
+                backgroundColor: '#f9f9f9',
+                '@media print': { top: 6, left: 6, p: 0.4 },
+              }}
+            >
+              <img src={qrCodeDataURL} alt="Payment QR Code" style={{ maxWidth: '90px', height: 'auto' }} />
+            </Box>
+          )}
           {/* Property Title */}
           <Box
             sx={{
@@ -418,7 +446,7 @@ const PaymentReceipt = ({ payment, open, onClose }) => {
           </Box>
 
           <Grid container spacing={1.5}>
-            {/* Left Column */}
+            {/* Payee (Left) */}
             <Grid item xs={12} md={6}>
               {/* Payee Information */}
               <Box sx={{ mb: 1.5 }}>
@@ -478,7 +506,10 @@ const PaymentReceipt = ({ payment, open, onClose }) => {
                   </Box>
                 </Box>
               </Box>
+            </Grid>
 
+            {/* Payer (Right) */}
+            <Grid item xs={12} md={6}>
               {/* Payer Information */}
               <Box sx={{ mb: 1.5 }}>
                 <Typography 
@@ -537,8 +568,10 @@ const PaymentReceipt = ({ payment, open, onClose }) => {
                   </Box>
                 </Box>
               </Box>
+            </Grid>
 
-              {/* Payment Details */}
+            {/* Payment Details (full width) */}
+            <Grid item xs={12}>
               <Box sx={{ mb: 1.5 }}>
                 <Typography 
                   variant="h6" 
@@ -849,61 +882,106 @@ const PaymentReceipt = ({ payment, open, onClose }) => {
               </Box>
             </Grid>
 
-            {/* Right Column */}
-            <Grid item xs={12} md={6}>
-              {/* QR Code */}
-              <Box sx={{ textAlign: 'center', mb: 1.5 }}>
-                <Typography 
-                  variant="h6" 
-                  fontWeight="bold" 
-                  sx={{ 
-                    mb: 0.4,
-                    fontSize: '0.85rem',
-                    '@media print': {
-                      fontSize: '0.75rem',
-                    },
-                  }}
-                >
-                  Payment Verification QR Code
-                </Typography>
-                {qrCodeDataURL && (
-                  <Box
-                    sx={{
-                      display: 'inline-block',
-                      p: 0.8,
-                      border: '2px solid #e0e0e0',
-                      borderRadius: '4px',
-                      backgroundColor: '#f9f9f9',
-                      '@media print': {
-                        p: 0.4,
-                      },
-                    }}
-                  >
-                    <img
-                      src={qrCodeDataURL}
-                      alt="Payment QR Code"
-                      style={{ 
-                        maxWidth: '100px', 
-                        height: 'auto',
+            {/* Notes + Description row under Payment Details */}
+            <Grid item xs={12}>
+              <Grid container spacing={1.5}>
+                <Grid item xs={12} md={6}>
+                  {/* Important Notes */}
+                  <Box sx={{ mb: 1.5 }}>
+                    <Typography 
+                      variant="h6" 
+                      fontWeight="bold" 
+                      sx={{ 
+                        mb: 0.4, 
+                        textDecoration: 'underline',
+                        fontSize: '0.9rem',
                         '@media print': {
-                          maxWidth: '90px',
+                          fontSize: '0.8rem',
                         },
                       }}
-                    />
+                    >
+                      IMPORTANT NOTES
+                    </Typography>
+                    <Box
+                      sx={{
+                        border: '1px solid #000',
+                        minHeight: '60px',
+                        p: 1,
+                        backgroundColor: '#f9f9f9',
+                        '@media print': {
+                          minHeight: '55px',
+                          p: 0.8,
+                        },
+                      }}
+                    >
+                      <Typography variant="body2" sx={{ fontSize: '0.7rem', mb: 0.3 }}>
+                        • This receipt serves as proof of payment for rent
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontSize: '0.7rem', mb: 0.3 }}>
+                        • Please keep this receipt for your records
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontSize: '0.7rem', mb: 0.3 }}>
+                        • For any queries, contact the property management office
+                      </Typography>
+                      {payment.notes && (
+                        <>
+                          <Divider sx={{ my: 0.3 }} />
+                          <Typography variant="body2" fontWeight="bold" sx={{ fontSize: '0.7rem' }}>
+                            Additional Notes:
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontSize: '0.7rem' }}>
+                            {payment.notes}
+                          </Typography>
+                        </>
+                      )}
+                    </Box>
                   </Box>
-                )}
-                <Typography 
-                  variant="caption" 
-                  color="text.secondary" 
-                  sx={{ 
-                    mt: 0.4, 
-                    display: 'block',
-                    fontSize: '0.65rem',
-                  }}
-                >
-                  Scan to verify payment details
-                </Typography>
-              </Box>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  {/* Description */}
+                  <Box sx={{ mb: 1.5 }}>
+                    <Typography 
+                      variant="h6" 
+                      fontWeight="bold" 
+                      sx={{ 
+                        mb: 0.4, 
+                        textDecoration: 'underline',
+                        fontSize: '0.9rem',
+                        '@media print': {
+                          fontSize: '0.8rem',
+                        },
+                      }}
+                    >
+                      DESCRIPTION
+                    </Typography>
+                    <Box
+                      sx={{
+                        border: '1px solid #000',
+                        minHeight: '60px',
+                        p: 1,
+                        backgroundColor: '#f9f9f9',
+                        '@media print': {
+                          minHeight: '55px',
+                          p: 0.8,
+                        },
+                      }}
+                    >
+                      <Typography variant="body2" sx={{ fontSize: '0.7rem' }}>
+                        Monthly rent payment for {payment.propertyName || 'property'} 
+                        for the period of {format(paymentDate, 'MMMM yyyy')}. 
+                        Payment method: {payment.paymentMethod?.replace('_', ' ').toUpperCase() || 'CASH'}.
+                        {payment.lateFee > 0 && (
+                          <> Late fee of UGX {payment.lateFee.toLocaleString()} included.</>
+                        )}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Grid>
+              </Grid>
+            </Grid>
+
+            {/* Right Column */}
+            <Grid item xs={12} md={6}>
 
               {/* Important Notes */}
               <Box sx={{ mb: 1.5 }}>

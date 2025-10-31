@@ -35,22 +35,33 @@ const CorporatePaymentSlip = ({ payment, property, tenant, open, onClose }) => {
     }
   }, [payment]);
 
-  // Generate QR code
+  // Generate QR code (PMSR2 compact schema)
   useEffect(() => {
     if (payment && invoiceNumber) {
-      const qrData = {
-        invoiceNumber,
-        paymentId: payment.id,
-        amount: payment.amount,
-        tenantName: payment.tenantName || tenant?.companyName,
-        propertyName: payment.propertyName || property?.name,
-        dueDate: payment.dueDate,
-        organizationId: payment.organizationId,
-      };
+      const isoDate = payment.dueDate ? new Date(payment.dueDate).toISOString() : new Date().toISOString();
+      const sanitize = (val) => String(val ?? '')
+        .replace(/[\n\r]/g, ' ')
+        .replace(/[;]/g, ' ')
+        .trim();
 
-      QRCode.toDataURL(JSON.stringify(qrData), {
+      const qrString = [
+        'PMSR2',
+        `typ=slip`,
+        `org=${sanitize(payment.organizationId)}`,
+        `inv=${sanitize(invoiceNumber)}`,
+        `pid=${sanitize(payment.id)}`,
+        `amt=${sanitize(payment.amount)}`,
+        `ccy=UGX`,
+        `dt=${sanitize(isoDate)}`,
+        `ten=${sanitize(payment.tenantName || tenant?.companyName)}`,
+        `prop=${sanitize(payment.propertyName || property?.name)}`,
+        payment.transactionId ? `txn=${sanitize(payment.transactionId)}` : null,
+      ].filter(Boolean).join(';');
+
+      QRCode.toDataURL(qrString, {
         width: 200,
         margin: 2,
+        errorCorrectionLevel: 'M',
       })
         .then((url) => setQrCodeDataURL(url))
         .catch((err) => console.error('Error generating QR code:', err));
@@ -317,8 +328,26 @@ const CorporatePaymentSlip = ({ payment, property, tenant, open, onClose }) => {
             p: 2,
             border: '1px solid #e0e0e0',
             backgroundColor: '#ffffff',
+            position: 'relative',
           }}
         >
+          {/* QR Top-Left */}
+          {qrCodeDataURL && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 8,
+                left: 8,
+                p: 0.6,
+                border: '2px solid #e0e0e0',
+                borderRadius: '4px',
+                backgroundColor: '#f9f9f9',
+                '@media print': { top: 6, left: 6, p: 0.4 },
+              }}
+            >
+              <img src={qrCodeDataURL} alt="Payment QR Code" style={{ width: '90px', height: 'auto' }} />
+            </Box>
+          )}
           {/* Company Header */}
           <Box sx={{ textAlign: 'center', mb: 3, pb: 2 }}>
             <Typography variant="h5" fontWeight="bold" gutterBottom>
@@ -411,12 +440,7 @@ const CorporatePaymentSlip = ({ payment, property, tenant, open, onClose }) => {
             </Typography>
           </Box>
 
-          {/* QR Code */}
-          {qrCodeDataURL && (
-            <Box sx={{ textAlign: 'center', mb: 3 }}>
-              <img src={qrCodeDataURL} alt="QR Code" style={{ width: '100px', height: 'auto' }} />
-            </Box>
-          )}
+          {/* QR moved to top-left */}
 
           {/* Footer Table */}
           <TableContainer sx={{ mb: 2 }}>
