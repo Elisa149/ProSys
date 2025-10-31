@@ -27,6 +27,7 @@ import toast from 'react-hot-toast';
 import { propertiesAPI } from '../services/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useAuth } from '../contexts/AuthContext';
+import confirmAction from '../utils/confirmAction';
 
 const propertyTypes = [
   { value: 'land', label: 'Land' },
@@ -136,6 +137,11 @@ const SimpleCreatePropertyPage = () => {
         }],
         totalRentableSpaces: data.rentableSpaces,
       };
+    }
+
+    const propertyLabel = data.name ? `"${data.name}"` : 'this property';
+    if (!confirmAction(`Create property ${propertyLabel}?`)) {
+      return;
     }
 
     createPropertyMutation.mutate(propertyData);

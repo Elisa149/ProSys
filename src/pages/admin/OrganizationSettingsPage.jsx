@@ -44,6 +44,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { organizationsAPI, usersAPI, propertiesAPI } from '../../services/api';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
+import confirmAction from '../../utils/confirmAction';
 
 const OrganizationSettingsPage = () => {
   const queryClient = useQueryClient();
@@ -138,6 +139,10 @@ const OrganizationSettingsPage = () => {
   };
 
   const handleSaveSettings = () => {
+    if (!confirmAction('Save changes to organization settings?')) {
+      return;
+    }
+
     updateOrgMutation.mutate(orgSettings);
   };
 

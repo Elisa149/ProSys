@@ -14,10 +14,12 @@ import {
   Collapse,
   useTheme,
   useMediaQuery,
+  Avatar,
 } from '@mui/material';
 import {
   Dashboard,
   Home,
+  Apartment,
   Receipt,
   Payment,
   AccountCircle,
@@ -103,12 +105,23 @@ const getAllNavigationItems = (userRole, hasPermission, hasAnyPermission, hasRol
   // PROPERTY MANAGER PAGES
   // ===============================================
   if (hasRole('super_admin') || hasAnyPermission(['properties:read:organization', 'properties:read:assigned'])) {
-    // Properties List
+    // Properties List (hidden for super admin per request)
+    if (!hasRole('super_admin')) {
+      items.push({
+        text: 'Properties',
+        icon: <Home />,
+        path: '/app/properties',
+        subtitle: 'Manage properties',
+        show: true,
+        section: 'main',
+      });
+    }
+    // Spaces by Property (grouped view)
     items.push({
-      text: 'Properties',
-      icon: <Home />,
-      path: '/app/properties',
-      subtitle: 'Manage properties',
+      text: 'Spaces by Property',
+      icon: <Apartment />,
+      path: '/app/spaces-by-property',
+      subtitle: 'All spaces grouped by property',
       show: true,
       section: 'main',
     });
@@ -191,7 +204,7 @@ const getAllNavigationItems = (userRole, hasPermission, hasAnyPermission, hasRol
   return items;
 };
 
-const ResponsiveSidebar = ({ onItemClick }) => {
+const ResponsiveSidebar = ({ onItemClick, collapsed = false }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -275,26 +288,29 @@ const ResponsiveSidebar = ({ onItemClick }) => {
       {/* Logo/Title */}
       <Toolbar sx={{ 
         flexDirection: 'column', 
-        alignItems: 'flex-start', 
+        alignItems: collapsed ? 'center' : 'flex-start', 
         gap: 1,
         minHeight: isMobile ? 80 : 100,
-        px: 2,
+        px: collapsed ? 1 : 2,
       }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <TrendingUp color="primary" />
-          <Typography 
-            variant={isMobile ? "h6" : "h5"} 
-            component="div" 
-            color="primary" 
-            fontWeight="bold"
-          >
-            ProSys
-          </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 1 }}>
+          <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
+            <Home sx={{ color: 'common.white', fontSize: 20 }} />
+          </Avatar>
+          {!collapsed && (
+            <Typography 
+              variant={isMobile ? "h6" : "h5"} 
+              component="div" 
+              color="primary" 
+              fontWeight="bold"
+            >
+              ProSys
+            </Typography>
+          )}
         </Box>
-        {userRole && (
+        {!collapsed && userRole && (
           <Chip 
             label={(() => {
-              // Handle different role formats
               if (typeof userRole === 'string') {
                 return userRole === 'super_admin' ? 'Super Admin' :
                        userRole === 'org_admin' ? 'Org Admin' :
@@ -327,36 +343,38 @@ const ResponsiveSidebar = ({ onItemClick }) => {
               <ListItemButton
                 onClick={() => handleSectionToggle(section)}
                 sx={{
-                  px: 2,
+                  px: collapsed ? 0 : 2,
                   py: 1,
                   backgroundColor: 'grey.50',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
+                  justifyContent: collapsed ? 'center' : 'space-between',
                   minHeight: 40,
                   '&:hover': {
                     backgroundColor: 'grey.100',
                   },
                 }}
               >
-                <ListItemIcon sx={{ minWidth: 40 }}>
+                <ListItemIcon sx={{ minWidth: 40, justifyContent: 'center' }}>
                   {sectionConfig[section]?.icon}
                 </ListItemIcon>
-                <ListItemText 
-                  primary={sectionConfig[section]?.title}
-                  primaryTypographyProps={{
-                    variant: 'subtitle2',
-                    fontWeight: 'bold',
-                    fontSize: isMobile ? '0.875rem' : '0.9rem',
-                  }}
-                  sx={{
-                    flex: 1,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                />
-                {expandedSections[section] ? <ExpandLess /> : <ExpandMore />}
+                {!collapsed && (
+                  <ListItemText 
+                    primary={sectionConfig[section]?.title}
+                    primaryTypographyProps={{
+                      variant: 'subtitle2',
+                      fontWeight: 'bold',
+                      fontSize: isMobile ? '0.875rem' : '0.9rem',
+                    }}
+                    sx={{
+                      flex: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  />
+                )}
+                {!collapsed && (expandedSections[section] ? <ExpandLess /> : <ExpandMore />)}
               </ListItemButton>
 
               {/* Collapsible Section Items */}
@@ -368,13 +386,13 @@ const ResponsiveSidebar = ({ onItemClick }) => {
                         selected={isActive(item.path)}
                         onClick={() => handleItemClick(item.path)}
                         sx={{
-                          pl: 4,
+                          pl: collapsed ? 1 : 4,
                           py: 1,
                           mx: 1,
                           borderRadius: 1,
                           mb: 0.5,
                           display: 'flex',
-                          alignItems: 'flex-start',
+                          alignItems: 'center',
                           minHeight: item.subtitle && !isMobile ? 48 : 40,
                           '&.Mui-selected': {
                             backgroundColor: 'primary.main',
@@ -399,43 +417,45 @@ const ResponsiveSidebar = ({ onItemClick }) => {
                           sx={{
                             color: isActive(item.path) ? 'white' : 'inherit',
                             minWidth: 40,
-                            alignSelf: 'flex-start',
-                            mt: item.subtitle && !isMobile ? 0.5 : 0,
+                            alignSelf: 'center',
+                            justifyContent: 'center',
                           }}
                         >
                           {item.icon}
                         </ListItemIcon>
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <ListItemText 
-                            primary={item.text}
-                            primaryTypographyProps={{
-                              fontWeight: isActive(item.path) ? 600 : 400,
-                              fontSize: isMobile ? '0.875rem' : '0.9rem',
-                            }}
-                            sx={{
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              margin: 0,
-                            }}
-                          />
-                          {item.subtitle && !isMobile && (
-                            <Typography
-                              variant="caption"
+                        {!collapsed && (
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <ListItemText 
+                              primary={item.text}
+                              primaryTypographyProps={{
+                                fontWeight: isActive(item.path) ? 600 : 400,
+                                fontSize: isMobile ? '0.875rem' : '0.9rem',
+                              }}
                               sx={{
-                                color: 'text.secondary',
-                                fontSize: '0.7rem',
-                                display: 'block',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
-                                mt: 0.25,
+                                margin: 0,
                               }}
-                            >
-                              {item.subtitle}
-                            </Typography>
-                          )}
-                        </Box>
+                            />
+                            {item.subtitle && !isMobile && (
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  color: 'text.secondary',
+                                  fontSize: '0.7rem',
+                                  display: 'block',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  mt: 0.25,
+                                }}
+                              >
+                                {item.subtitle}
+                              </Typography>
+                            )}
+                          </Box>
+                        )}
                       </ListItemButton>
                     </ListItem>
                   ))}
@@ -492,13 +512,15 @@ const ResponsiveSidebar = ({ onItemClick }) => {
               >
                 {item.icon}
               </ListItemIcon>
-              <ListItemText 
-                primary={item.text}
-                primaryTypographyProps={{
-                  fontWeight: isActive(item.path) ? 600 : 400,
-                  fontSize: isMobile ? '0.875rem' : '0.9rem',
-                }}
-              />
+              {!collapsed && (
+                <ListItemText 
+                  primary={item.text}
+                  primaryTypographyProps={{
+                    fontWeight: isActive(item.path) ? 600 : 400,
+                    fontSize: isMobile ? '0.875rem' : '0.9rem',
+                  }}
+                />
+              )}
             </ListItemButton>
           </ListItem>
         ))}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 import {
   Box,
   Paper,
@@ -23,7 +23,10 @@ import {
   InputAdornment,
   MenuItem,
   Tooltip,
-  Avatar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   People,
@@ -44,6 +47,7 @@ import {
   Payment,
   Warning,
   CheckCircle,
+  Download,
 } from '@mui/icons-material';
 import { format, differenceInDays } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -55,15 +59,34 @@ import ResponsiveContainer from '../components/common/ResponsiveContainer';
 import ResponsiveHeader from '../components/common/ResponsiveHeader';
 import ResponsiveTable from '../components/common/ResponsiveTable';
 import PropertySelectorDialog from '../components/PropertySelectorDialog';
+import confirmAction from '../utils/confirmAction';
 
 const TenantsPage = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { userId, userRole, organizationId } = useAuth();
   const [tabValue, setTabValue] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [propertyFilter, setPropertyFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [leaseEndFrom, setLeaseEndFrom] = useState('');
+  const [leaseEndTo, setLeaseEndTo] = useState('');
   const [propertyDialog, setPropertyDialog] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingTenant, setEditingTenant] = useState(null);
+  const [editForm, setEditForm] = useState({
+    tenantName: '',
+    tenantPhone: '',
+    tenantEmail: '',
+    nationalId: '',
+    emergencyContact: '',
+    monthlyRent: '',
+    leaseStart: '',
+    leaseEnd: '',
+    status: 'active',
+  });
+  const [selectedPropertyId, setSelectedPropertyId] = useState('');
+  const [selectedSpaceId, setSelectedSpaceId] = useState('');
 
   // Fetch all properties
   const {
@@ -160,15 +183,15 @@ const TenantsPage = () => {
           if (rent.leaseEnd) {
             const leaseEndDate = new Date(rent.leaseEnd);
             daysUntilExpiry = differenceInDays(leaseEndDate, today);
-            isExpiringSoon = daysUntilExpiry <= 30 && daysUntilExpiry > 0;
+            isExpiringSoon = daysUntilExpiry <= 20 && daysUntilExpiry > 0;
             isExpired = daysUntilExpiry < 0;
           }
           
           tenants.push({
             id: rent.id,
             tenantName: rent.tenantName,
-            phone: rent.phone,
-            email: rent.email,
+            phone: rent.tenantPhone,
+            email: rent.tenantEmail,
             nationalId: rent.nationalId,
             emergencyContact: rent.emergencyContact,
             monthlyRent: rent.monthlyRent,
@@ -239,6 +262,18 @@ const TenantsPage = () => {
       );
     }
 
+    // Filter by lease end date range
+    if (leaseEndFrom) {
+      const from = new Date(leaseEndFrom);
+      filtered = filtered.filter(tenant => tenant.leaseEnd && new Date(tenant.leaseEnd) >= from);
+    }
+    if (leaseEndTo) {
+      const to = new Date(leaseEndTo);
+      // Normalize end of day for inclusive filtering
+      to.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(tenant => tenant.leaseEnd && new Date(tenant.leaseEnd) <= to);
+    }
+
     return filtered;
   };
 
@@ -262,13 +297,146 @@ const TenantsPage = () => {
     return name?.split(' ').map(n => n[0]).join('').toUpperCase() || '?';
   };
 
+  const exportAllTenantsToCSV = () => {
+    const rows = allTenants.map(t => ({
+      TenantName: t.tenantName || '',
+      Phone: t.phone || '',
+      Email: t.email || '',
+      NationalId: t.nationalId || '',
+      EmergencyContact: t.emergencyContact || '',
+      PropertyName: t.propertyName || '',
+      PropertyType: t.propertyType || '',
+      SpaceName: t.spaceName || '',
+      SpaceType: t.spaceType || '',
+      FloorNumber: t.floorNumber ?? '',
+      MonthlyRent: t.monthlyRent ?? '',
+      LeaseStart: t.leaseStart ? new Date(t.leaseStart).toISOString() : '',
+      LeaseEnd: t.leaseEnd ? new Date(t.leaseEnd).toISOString() : '',
+      Status: getStatusLabel(t),
+      PropertyAddress: t.propertyAddress || '',
+    }));
+
+    const headers = Object.keys(rows[0] || {
+      TenantName: '', Phone: '', Email: '', NationalId: '', EmergencyContact: '', PropertyName: '', PropertyType: '', SpaceName: '', SpaceType: '', FloorNumber: '', MonthlyRent: '', LeaseStart: '', LeaseEnd: '', Status: '', PropertyAddress: ''
+    });
+
+    const escape = (val) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (/[",\n]/.test(str)) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    };
+
+    const csv = [headers.join(',')]
+      .concat(rows.map(r => headers.map(h => escape(r[h])).join(',')))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'prosys all tenants.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const openEditDialog = (tenant) => {
+    setEditingTenant(tenant);
+    setEditForm({
+      tenantName: tenant.tenantName || '',
+      tenantPhone: tenant.phone || '',
+      tenantEmail: tenant.email || '',
+      nationalId: tenant.nationalId || '',
+      emergencyContact: tenant.emergencyContact || '',
+      monthlyRent: tenant.monthlyRent ?? '',
+      leaseStart: tenant.leaseStart ? new Date(tenant.leaseStart).toISOString().slice(0, 10) : '',
+      leaseEnd: tenant.leaseEnd ? new Date(tenant.leaseEnd).toISOString().slice(0, 10) : '',
+      status: tenant.status || 'active',
+    });
+    setSelectedPropertyId(tenant.propertyId || '');
+    setSelectedSpaceId(tenant.spaceId || '');
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingTenant) return;
+
+    const tenantLabel = editingTenant.tenantName || 'this tenant';
+    if (!confirmAction(`Save changes for ${tenantLabel}?`)) {
+      return;
+    }
+    try {
+      const updates = {
+        tenantName: editForm.tenantName || null,
+        tenantPhone: editForm.tenantPhone || null,
+        tenantEmail: editForm.tenantEmail || null,
+        nationalId: editForm.nationalId || null,
+        emergencyContact: editForm.emergencyContact || null,
+        monthlyRent: editForm.monthlyRent !== '' ? Number(editForm.monthlyRent) : null,
+        leaseStart: editForm.leaseStart ? new Date(editForm.leaseStart) : null,
+        leaseEnd: editForm.leaseEnd ? new Date(editForm.leaseEnd) : null,
+        status: editForm.status || 'active',
+      };
+
+      // If property changed or space changed, include property/space fields
+      if (selectedPropertyId && (selectedPropertyId !== editingTenant.propertyId)) {
+        const prop = properties.find(p => p.id === selectedPropertyId);
+        if (prop) {
+          updates.propertyId = prop.id;
+          updates.propertyName = prop.name;
+          updates.organizationId = prop.organizationId || null;
+        }
+      }
+      if (selectedSpaceId && (selectedSpaceId !== editingTenant.spaceId)) {
+        // Find selected space label
+        const prop = properties.find(p => p.id === (selectedPropertyId || editingTenant.propertyId));
+        if (prop) {
+          if (prop.type === 'building' && prop.buildingDetails?.floors) {
+            let found;
+            prop.buildingDetails.floors.forEach(f => {
+              f.spaces?.forEach(s => {
+                if (s.spaceId === selectedSpaceId) found = s;
+              });
+            });
+            if (found) {
+              updates.spaceId = found.spaceId;
+              updates.spaceName = found.spaceName;
+            }
+          } else if (prop.type === 'land' && prop.landDetails?.squatters) {
+            const sq = prop.landDetails.squatters.find(sq => sq.squatterId === selectedSpaceId);
+            if (sq) {
+              updates.spaceId = sq.squatterId;
+              updates.spaceName = sq.assignedArea;
+            }
+          }
+        }
+      }
+
+      await rentService.update(editingTenant.id, updates);
+      toast.success('Tenant information updated');
+      setEditDialogOpen(false);
+      setEditingTenant(null);
+      await queryClient.invalidateQueries('rent');
+    } catch (e) {
+      // Error toasts handled in service
+    }
+  };
+
   return (
     <ResponsiveContainer>
       <ResponsiveHeader
         title="All Tenants Management"
         subtitle="Complete overview of all tenants, their spaces, and payment information"
         icon={<People color="primary" />}
-        actions={[]}
+        actions={[
+          <Button key="export" variant="outlined" startIcon={<Download />} onClick={exportAllTenantsToCSV}>
+            Export
+          </Button>
+        ]}
       />
 
       {/* Summary Stats */}
@@ -402,32 +570,28 @@ const TenantsPage = () => {
             <MenuItem value="expired">Expired</MenuItem>
           </TextField>
 
-          {/* Clear Filters Button */}
-          {(searchTerm || propertyFilter !== 'all' || statusFilter !== 'all') && (
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => {
-                setSearchTerm('');
-                setPropertyFilter('all');
-                setStatusFilter('all');
-              }}
-              startIcon={<Clear />}
-            >
-              Clear Filters
-            </Button>
-          )}
-        </Box>
+          {/* Lease End Date Range */}
+          <TextField
+            size="small"
+            type="date"
+            label="Lease End From"
+            value={leaseEndFrom}
+            onChange={(e) => setLeaseEndFrom(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 170 }}
+          />
+          <TextField
+            size="small"
+            type="date"
+            label="Lease End To"
+            value={leaseEndTo}
+            onChange={(e) => setLeaseEndTo(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 170 }}
+          />
 
-        <Tabs
-          value={tabValue}
-          onChange={(e, newValue) => setTabValue(newValue)}
-          sx={{ borderTop: 1, borderColor: 'divider' }}
-        >
-          <Tab label={`All Tenants (${allTenants.length})`} />
-          <Tab label={`Expiring Soon (${expiringSoonTenants.length})`} />
-          <Tab label={`Expired (${expiredTenants.length})`} />
-        </Tabs>
+          {/* Tabs removed as requested */}
+        </Box>
       </Paper>
 
       {/* Tenants Table */}
@@ -460,10 +624,7 @@ const TenantsPage = () => {
               >
                 {/* Tenant Information */}
                 <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Avatar sx={{ bgcolor: 'primary.main' }}>
-                      {getInitials(tenant.tenantName)}
-                    </Avatar>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <Box>
                       <Typography variant="body1" fontWeight="bold">
                         {tenant.tenantName}
@@ -609,31 +770,20 @@ const TenantsPage = () => {
 
                 {/* Actions */}
                 <TableCell>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <Tooltip title="View Property Details">
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<Visibility />}
-                        onClick={() => navigate(`/app/properties/${tenant.propertyId}`)}
-                        fullWidth
-                      >
-                        View Property
-                      </Button>
-                    </Tooltip>
-                    
-                    <Tooltip title="Manage Space Assignment">
+                  <Box sx={{ display: 'flex', flexDirection: 'row', gap: 1, flexWrap: 'nowrap', alignItems: 'center' }}>
+                    <Tooltip title="Edit Tenant Information">
                       <Button
                         size="small"
                         variant="contained"
+                        color="secondary"
                         startIcon={<Edit />}
-                        onClick={() => navigate(`/app/properties/${tenant.propertyId}/spaces`)}
-                        color="primary"
-                        fullWidth
+                        onClick={() => openEditDialog(tenant)}
+                        sx={{ minWidth: 120 }}
                       >
-                        Manage Space
+                        Edit Tenant
                       </Button>
                     </Tooltip>
+                    {/* Property and Edit Space buttons removed per request */}
                   </Box>
                 </TableCell>
               </TableRow>
@@ -671,6 +821,144 @@ const TenantsPage = () => {
         open={propertyDialog}
         onClose={() => setPropertyDialog(false)}
       />
+
+      {/* Edit Tenant Dialog */}
+      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Edit Tenant Information</DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="Tenant Name"
+              value={editForm.tenantName}
+              onChange={(e) => setEditForm({ ...editForm, tenantName: e.target.value })}
+              fullWidth
+            />
+            <TextField
+              label="Phone"
+              value={editForm.tenantPhone}
+              onChange={(e) => setEditForm({ ...editForm, tenantPhone: e.target.value })}
+              fullWidth
+            />
+            <TextField
+              label="Email"
+              type="email"
+              value={editForm.tenantEmail}
+              onChange={(e) => setEditForm({ ...editForm, tenantEmail: e.target.value })}
+              fullWidth
+            />
+            <TextField
+              label="National ID"
+              value={editForm.nationalId}
+              onChange={(e) => setEditForm({ ...editForm, nationalId: e.target.value })}
+              fullWidth
+            />
+            <TextField
+              label="Emergency Contact"
+              value={editForm.emergencyContact}
+              onChange={(e) => setEditForm({ ...editForm, emergencyContact: e.target.value })}
+              fullWidth
+            />
+
+            {/* Lease Details */}
+            <TextField
+              label="Monthly Rent (UGX)"
+              type="number"
+              value={editForm.monthlyRent}
+              onChange={(e) => setEditForm({ ...editForm, monthlyRent: e.target.value })}
+              fullWidth
+            />
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <TextField
+                label="Lease Start"
+                type="date"
+                value={editForm.leaseStart}
+                onChange={(e) => setEditForm({ ...editForm, leaseStart: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+                sx={{ minWidth: 220 }}
+              />
+              <TextField
+                label="Lease End"
+                type="date"
+                value={editForm.leaseEnd}
+                onChange={(e) => setEditForm({ ...editForm, leaseEnd: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+                sx={{ minWidth: 220 }}
+              />
+            </Box>
+
+            {/* Status */}
+            <TextField
+              select
+              label="Status"
+              value={editForm.status}
+              onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+              fullWidth
+            >
+              <MenuItem value="active">Active</MenuItem>
+              <MenuItem value="inactive">Inactive</MenuItem>
+            </TextField>
+
+            {/* Property and Space */}
+            <TextField
+              select
+              label="Property"
+              value={selectedPropertyId}
+              onChange={(e) => {
+                setSelectedPropertyId(e.target.value);
+                setSelectedSpaceId('');
+              }}
+              fullWidth
+            >
+              {properties.map((property) => (
+                <MenuItem key={property.id} value={property.id}>
+                  {property.name}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              select
+              label="Space"
+              value={selectedSpaceId}
+              onChange={(e) => setSelectedSpaceId(e.target.value)}
+              fullWidth
+              disabled={!selectedPropertyId}
+            >
+              {(() => {
+                const prop = properties.find(p => p.id === selectedPropertyId);
+                if (!prop) return null;
+                if (prop.type === 'building' && prop.buildingDetails?.floors) {
+                  const items = [];
+                  prop.buildingDetails.floors.forEach((floor) => {
+                    floor.spaces?.forEach((space) => {
+                      items.push(
+                        <MenuItem key={space.spaceId} value={space.spaceId}>
+                          {space.spaceName} {floor.floorName ? `• ${floor.floorName}` : ''}
+                        </MenuItem>
+                      );
+                    });
+                  });
+                  return items;
+                }
+                if (prop.type === 'land' && prop.landDetails?.squatters) {
+                  return prop.landDetails.squatters.map((sq) => (
+                    <MenuItem key={sq.squatterId} value={sq.squatterId}>
+                      {sq.assignedArea}
+                    </MenuItem>
+                  ));
+                }
+                return null;
+              })()}
+            </TextField>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveEdit}>
+            Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
     </ResponsiveContainer>
   );
 };

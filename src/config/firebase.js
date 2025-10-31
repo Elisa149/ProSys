@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import { getAnalytics } from 'firebase/analytics';
 
 // Your web app's Firebase configuration
@@ -67,6 +68,7 @@ let app = null;
 let auth = null;
 let db = null;
 let analytics = null;
+let storage = null;
 
 if (missingEnvVars.length === 0 || !isProduction) {
   try {
@@ -77,6 +79,9 @@ if (missingEnvVars.length === 0 || !isProduction) {
     
     // Initialize Cloud Firestore and get a reference to the service
     db = getFirestore(app);
+    
+    // Initialize Cloud Storage
+    storage = getStorage(app);
     
     // Initialize Firebase Analytics (optional, only in browser)
     analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
@@ -115,5 +120,5 @@ if (missingEnvVars.length === 0 || !isProduction) {
   console.error('⚠️  Your app may not function correctly until variables are added.');
 }
 
-export { auth, db, analytics };
+export { auth, db, analytics, storage };
 export default app;

@@ -62,6 +62,7 @@ import { userService } from '../services/firebaseService';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { format } from 'date-fns';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import confirmAction from '../utils/confirmAction';
 
 const UserRoleAssignmentPage = () => {
   const { user, hasPermission, isAdmin } = useAuth();
@@ -216,6 +217,11 @@ const UserRoleAssignmentPage = () => {
       alert('Please select a role');
       return;
     }
+
+    const userLabel = selectedUser?.displayName || selectedUser?.email || 'this user';
+    if (!confirmAction(`Approve ${userLabel} with the selected role?`)) {
+      return;
+    }
     
     approveUserMutation.mutate({
       userId: selectedUser.id,
@@ -225,14 +231,21 @@ const UserRoleAssignmentPage = () => {
   };
 
   const handleRejectUser = (userId) => {
-    if (window.confirm('Are you sure you want to reject this user?')) {
-      rejectUserMutation.mutate(userId);
+    if (!confirmAction('Reject this user access request?')) {
+      return;
     }
+
+    rejectUserMutation.mutate(userId);
   };
 
   const handleUpdateRole = () => {
     if (!selectedRole) {
       alert('Please select a role');
+      return;
+    }
+
+    const userLabel = selectedUser?.displayName || selectedUser?.email || 'this user';
+    if (!confirmAction(`Update role for ${userLabel}?`)) {
       return;
     }
     
