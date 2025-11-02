@@ -596,6 +596,9 @@ const RentPage = () => {
       invoiceId: newPayment.invoiceId,
       rentId: newPayment.rentId,
       propertyId: selectedRent?.propertyId,
+      organizationId: effectiveOrganizationId, // CRITICAL: Must include organizationId for queries to work
+      tenantName: selectedRent?.tenantName, // For display on payments page
+      propertyName: selectedRent?.propertyName, // For display on payments page
       amount: parseFloat(newPayment.amount),
       paymentDate: newPayment.paymentDate,
       paymentMethod: newPayment.paymentMethod,
