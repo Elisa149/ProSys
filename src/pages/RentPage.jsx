@@ -368,122 +368,6 @@ const RentPage = () => {
     }
   );
 
-  if (rentLoading || propertiesLoading || paymentsLoading || invoicesLoading) {
-    return <LoadingSpinner message="Loading rent management data..." />;
-  }
-
-  if (rentError || propertiesError || paymentsError || invoicesError) {
-    return (
-      <ResponsiveContainer>
-        <Alert severity="error" sx={{ m: 2, mb: 2 }}>
-          Failed to load rent management data: {rentError?.message || propertiesError?.message || paymentsError?.message}
-        </Alert>
-        <Alert severity="info" sx={{ m: 2 }}>
-          <strong>Quick Fix:</strong> Click the "Fix Data Loading" button at the top, or log out and log back in.
-        </Alert>
-      </ResponsiveContainer>
-    );
-  }
-  
-  // Show helpful alert if no data is loading but we have no records
-  const showNoDataAlert = !rentLoading && !propertiesLoading && !paymentsLoading && 
-                          rentRecords.length === 0 && properties.length === 0;
-
-  // Calculate stats from real data
-  const today = new Date();
-  
-  const enrichedRentRecords = rentRecords.map(rent => {
-    // Calculate if overdue
-    const nextDueDate = new Date(today.getFullYear(), today.getMonth(), rent.paymentDueDate || 1);
-    if (nextDueDate < today && nextDueDate.getMonth() === today.getMonth()) {
-      nextDueDate.setMonth(nextDueDate.getMonth() + 1);
-    }
-    
-    const daysUntilDue = differenceInDays(nextDueDate, today);
-    const isOverdue = daysUntilDue < 0;
-    const daysOverdue = isOverdue ? Math.abs(daysUntilDue) : 0;
-    
-    // Calculate outstanding (simplified - would need payment tracking)
-    const outstandingAmount = isOverdue ? rent.monthlyRent : 0;
-    
-    return {
-      ...rent,
-      nextDueDate,
-      daysUntilDue,
-      isOverdue,
-      daysOverdue,
-      outstandingAmount,
-    };
-  });
-
-  const overdueRents = enrichedRentRecords.filter(rent => rent.isOverdue);
-  
-  // Calculate stats
-  const currentMonthPayments = payments.filter(p => {
-    const paymentDate = new Date(p.paymentDate);
-    return paymentDate.getMonth() === today.getMonth() && 
-           paymentDate.getFullYear() === today.getFullYear();
-  });
-  
-  const totalCollected = currentMonthPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const monthlyTarget = enrichedRentRecords.reduce((sum, r) => sum + (r.monthlyRent || 0), 0);
-  const collectionRate = monthlyTarget > 0 ? Math.round((totalCollected / monthlyTarget) * 100) : 0;
-  const overdueAmount = overdueRents.reduce((sum, r) => sum + (r.outstandingAmount || 0), 0);
-  
-  const stats = {
-    totalCollected,
-    monthlyTarget,
-    collectionRate,
-    overdueAmount,
-    activeLeases: enrichedRentRecords.filter(r => r.status === 'active').length,
-    totalProperties: properties.length,
-  };
-
-  // Handle functions
-  const resetPaymentForm = () => {
-    setNewPayment({
-      invoiceId: '',
-      rentId: '',
-      amount: '',
-      paymentDate: new Date().toISOString().split('T')[0],
-      paymentMethod: 'cash',
-      transactionId: '',
-      notes: '',
-    });
-    setSelectedRent(null);
-  };
-
-  const handleRecordPayment = () => {
-    if (!newPayment.invoiceId || !newPayment.amount) {
-      toast.error('Please select an invoice and enter amount');
-      return;
-    }
-    
-    // Only send fields that are allowed by the backend validation schema
-    const paymentData = {
-      invoiceId: newPayment.invoiceId,
-      rentId: newPayment.rentId,
-      propertyId: selectedRent?.propertyId,
-      amount: parseFloat(newPayment.amount),
-      paymentDate: newPayment.paymentDate,
-      paymentMethod: newPayment.paymentMethod,
-      transactionId: newPayment.transactionId || '',
-      notes: newPayment.notes || '',
-      lateFee: 0,
-      status: 'completed',
-    };
-    
-    const amountLabel = Number.isFinite(paymentData.amount)
-      ? ` of UGX ${paymentData.amount.toLocaleString()}`
-      : '';
-    const tenantLabel = selectedRent?.tenantName ? ` for ${selectedRent.tenantName}` : '';
-    if (!confirmAction(`Record payment${amountLabel}${tenantLabel}?`)) {
-      return;
-    }
-
-    createPaymentMutation.mutate(paymentData);
-  };
-
   const getExistingBillingPeriods = useCallback((rentId) => {
     const periodSet = new Set();
     if (!rentId) return periodSet;
@@ -614,6 +498,123 @@ const RentPage = () => {
       }
     }
   }, [invoiceRentContext, invoicePeriodDialogOpen, invoices, buildLeasePeriodOptions]);
+
+  // Early return conditions - AFTER all hooks are called
+  if (rentLoading || propertiesLoading || paymentsLoading || invoicesLoading) {
+    return <LoadingSpinner message="Loading rent management data..." />;
+  }
+
+  if (rentError || propertiesError || paymentsError || invoicesError) {
+    return (
+      <ResponsiveContainer>
+        <Alert severity="error" sx={{ m: 2, mb: 2 }}>
+          Failed to load rent management data: {rentError?.message || propertiesError?.message || paymentsError?.message}
+        </Alert>
+        <Alert severity="info" sx={{ m: 2 }}>
+          <strong>Quick Fix:</strong> Click the "Fix Data Loading" button at the top, or log out and log back in.
+        </Alert>
+      </ResponsiveContainer>
+    );
+  }
+  
+  // Show helpful alert if no data is loading but we have no records
+  const showNoDataAlert = !rentLoading && !propertiesLoading && !paymentsLoading && 
+                          rentRecords.length === 0 && properties.length === 0;
+
+  // Calculate stats from real data
+  const today = new Date();
+  
+  const enrichedRentRecords = rentRecords.map(rent => {
+    // Calculate if overdue
+    const nextDueDate = new Date(today.getFullYear(), today.getMonth(), rent.paymentDueDate || 1);
+    if (nextDueDate < today && nextDueDate.getMonth() === today.getMonth()) {
+      nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+    }
+    
+    const daysUntilDue = differenceInDays(nextDueDate, today);
+    const isOverdue = daysUntilDue < 0;
+    const daysOverdue = isOverdue ? Math.abs(daysUntilDue) : 0;
+    
+    // Calculate outstanding (simplified - would need payment tracking)
+    const outstandingAmount = isOverdue ? rent.monthlyRent : 0;
+    
+    return {
+      ...rent,
+      nextDueDate,
+      daysUntilDue,
+      isOverdue,
+      daysOverdue,
+      outstandingAmount,
+    };
+  });
+
+  const overdueRents = enrichedRentRecords.filter(rent => rent.isOverdue);
+  
+  // Calculate stats
+  const currentMonthPayments = payments.filter(p => {
+    const paymentDate = new Date(p.paymentDate);
+    return paymentDate.getMonth() === today.getMonth() && 
+           paymentDate.getFullYear() === today.getFullYear();
+  });
+  
+  const totalCollected = currentMonthPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const monthlyTarget = enrichedRentRecords.reduce((sum, r) => sum + (r.monthlyRent || 0), 0);
+  const collectionRate = monthlyTarget > 0 ? Math.round((totalCollected / monthlyTarget) * 100) : 0;
+  const overdueAmount = overdueRents.reduce((sum, r) => sum + (r.outstandingAmount || 0), 0);
+  
+  const stats = {
+    totalCollected,
+    monthlyTarget,
+    collectionRate,
+    overdueAmount,
+    activeLeases: enrichedRentRecords.filter(r => r.status === 'active').length,
+    totalProperties: properties.length,
+  };
+
+  // Handle functions
+  const resetPaymentForm = () => {
+    setNewPayment({
+      invoiceId: '',
+      rentId: '',
+      amount: '',
+      paymentDate: new Date().toISOString().split('T')[0],
+      paymentMethod: 'cash',
+      transactionId: '',
+      notes: '',
+    });
+    setSelectedRent(null);
+  };
+
+  const handleRecordPayment = () => {
+    if (!newPayment.invoiceId || !newPayment.amount) {
+      toast.error('Please select an invoice and enter amount');
+      return;
+    }
+    
+    // Only send fields that are allowed by the backend validation schema
+    const paymentData = {
+      invoiceId: newPayment.invoiceId,
+      rentId: newPayment.rentId,
+      propertyId: selectedRent?.propertyId,
+      amount: parseFloat(newPayment.amount),
+      paymentDate: newPayment.paymentDate,
+      paymentMethod: newPayment.paymentMethod,
+      transactionId: newPayment.transactionId || '',
+      notes: newPayment.notes || '',
+      lateFee: 0,
+      status: 'completed',
+    };
+    
+    const amountLabel = Number.isFinite(paymentData.amount)
+      ? ` of UGX ${paymentData.amount.toLocaleString()}`
+      : '';
+    const tenantLabel = selectedRent?.tenantName ? ` for ${selectedRent.tenantName}` : '';
+    if (!confirmAction(`Record payment${amountLabel}${tenantLabel}?`)) {
+      return;
+    }
+
+    createPaymentMutation.mutate(paymentData);
+  };
 
   const openInvoiceDialogForRent = (rent) => {
     if (!rent) return;

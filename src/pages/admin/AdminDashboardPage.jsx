@@ -51,19 +51,25 @@ import toast from 'react-hot-toast';
 const AdminDashboardPage = () => {
   const { userRole, userProfile } = useAuth();
 
-  // Fetch admin dashboard data from API
+  // Fetch admin dashboard data from API with caching
   const {
     data: dashboardData,
     isLoading,
     error,
-  } = useQuery('adminDashboardStats', usersAPI.getAdminDashboardStats, {
-    retry: 2,
-    retryDelay: 1000,
-    onError: (error) => {
-      console.error('Admin dashboard error:', error);
-      toast.error(error.response?.data?.error || 'Failed to load dashboard data');
+  } = useQuery(
+    ['adminDashboardStats', userRole], 
+    usersAPI.getAdminDashboardStats, 
+    {
+      retry: 2,
+      retryDelay: 1000,
+      staleTime: 3 * 60 * 1000, // Cache for 3 minutes (admin data changes less frequently)
+      cacheTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+      onError: (error) => {
+        console.error('Admin dashboard error:', error);
+        toast.error(error.response?.data?.error || 'Failed to load dashboard data');
+      }
     }
-  });
+  );
 
   const dashboardStats = dashboardData?.data?.stats || {
     totalRevenue: 0,

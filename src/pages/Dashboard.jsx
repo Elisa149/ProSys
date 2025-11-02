@@ -58,33 +58,53 @@ const Dashboard = () => {
   const { user, userId, userRole, organizationId, hasPermission, hasAnyPermission } = useAuth();
   const [propertyDialog, setPropertyDialog] = React.useState(false);
 
-  // Fetch dashboard data using Firebase with RBAC
+  // Fetch dashboard data using Firebase with RBAC (single query with caching)
   const {
     data: summary,
     isLoading: summaryLoading,
     error: summaryError,
-  } = useQuery('dashboard-summary', () => paymentService.getDashboardSummary(userId, userRole, organizationId), {
-    enabled: !!userId,
-    retry: 3,
-    retryDelay: 1000,
-    onError: (error) => {
-      console.error('Dashboard summary error:', error);
+  } = useQuery(
+    ['dashboard-summary', userId, userRole, organizationId], 
+    () => paymentService.getDashboardSummary(userId, userRole, organizationId), 
+    {
+      enabled: !!userId,
+      retry: 2,
+      retryDelay: 1000,
+      staleTime: 2 * 60 * 1000, // Cache for 2 minutes (data is fresh for 2 min)
+      cacheTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+      onError: (error) => {
+        console.error('Dashboard summary error:', error);
+      }
     }
-  });
+  );
 
+  // Fetch properties separately only for property list display (with caching)
   const {
     data: properties,
     isLoading: propertiesLoading,
-  } = useQuery('properties', () => propertyService.getAll(userId, userRole, organizationId), {
-    enabled: !!userId
-  });
+  } = useQuery(
+    ['properties', userId, userRole, organizationId], 
+    () => propertyService.getAll(userId, userRole, organizationId, { limit: 50 }), 
+    {
+      enabled: !!userId,
+      staleTime: 2 * 60 * 1000, // Cache for 2 minutes
+      cacheTime: 5 * 60 * 1000,
+    }
+  );
 
+  // Fetch recent payments for analytics charts (with caching)
   const {
     data: payments,
     isLoading: paymentsLoading,
-  } = useQuery('payments', () => paymentService.getAll(userId, userRole, organizationId), {
-    enabled: !!userId
-  });
+  } = useQuery(
+    ['recent-payments', userId, userRole, organizationId], 
+    () => paymentService.getAll(userId, userRole, organizationId, { limit: 100 }), 
+    {
+      enabled: !!userId,
+      staleTime: 1 * 60 * 1000, // Cache for 1 minute (payments change frequently)
+      cacheTime: 3 * 60 * 1000,
+    }
+  );
 
   // Use properties data directly (no need for nested data structure with Firebase)
   const propertiesArray = properties || [];
