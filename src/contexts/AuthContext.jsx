@@ -270,10 +270,16 @@ export const AuthProvider = ({ children }) => {
     return null;
   };
 
-  // Fetch user profile with RBAC data
-  const fetchUserProfile = async () => {
+  // Fetch user profile with RBAC data (with caching to reduce Firestore reads)
+  const fetchUserProfile = async (forceRefresh = false) => {
     try {
-      console.log('🔄 AuthContext: Fetching user profile...');
+      // Check if we already have cached profile data and it's recent
+      if (!forceRefresh && userProfile && userRole && organizationId) {
+        console.log('⚡ Using cached profile data, skipping Firestore read');
+        return userProfile;
+      }
+
+      console.log('🔄 AuthContext: Fetching user profile from Firestore...');
       const profile = await userService.getProfile(user?.uid);
       console.log('📋 AuthContext: Profile data:', profile);
       
@@ -293,6 +299,13 @@ export const AuthProvider = ({ children }) => {
         setUserPermissions(newProfile?.permissions || []);
         setOrganizationId(newProfile?.organizationId || null);
         setNeedsRoleAssignment(!newProfile?.organizationId || !newProfile?.role);
+        
+        // Cache in localStorage
+        if (newProfile?.roleId) {
+          localStorage.setItem('userRole', newProfile.roleId);
+          localStorage.setItem('organizationId', newProfile.organizationId || '');
+        }
+        
         return newProfile;
       }
       
@@ -304,6 +317,13 @@ export const AuthProvider = ({ children }) => {
       setUserPermissions(profile.permissions || []);
       setOrganizationId(profile.organizationId || null);
       setNeedsRoleAssignment(!profile.organizationId || !profile.role);
+      
+      // Cache in localStorage
+      if (profile.roleId) {
+        localStorage.setItem('userRole', profile.roleId);
+        localStorage.setItem('organizationId', profile.organizationId || '');
+        localStorage.setItem('userId', user.uid);
+      }
       
       console.log('✅ AuthContext: State updated');
       return profile;
@@ -437,11 +457,9 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('organizationId', claims.organizationId || '');
             localStorage.setItem('userId', user.uid);
             
-            // Optional: Also fetch full profile from Firestore in background
-            // This keeps profile data (name, etc) up to date without blocking login
-            fetchUserProfile().catch(err => {
-              console.log('Background profile fetch failed:', err);
-            });
+            // Skip profile fetch if we already have the role from custom claims
+            // This saves a Firestore read on every page load
+            console.log('✅ Skipping profile fetch - using custom claims');
           } else {
             // AGGRESSIVE FALLBACK: Always try to get role from Firestore
             console.log('⚠️ No custom claims in auth state change, fetching from Firestore...');
@@ -512,7 +530,8 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
-  // Auto-refresh token every 50 minutes (tokens expire after 1 hour) - not needed for direct Firebase
+  // Auto-refresh token every 50 minutes (tokens expire after 1 hour)
+  // Optimized to not trigger unnecessary operations
   useEffect(() => {
     let interval;
     
@@ -523,11 +542,12 @@ export const AuthProvider = ({ children }) => {
           const token = await user.getIdToken(true); // force refresh
           setUserToken(token);
           console.log('✅ Token refreshed successfully');
+          // Don't refetch profile on token refresh - it doesn't change
         } catch (error) {
           console.error('❌ Auto token refresh error:', error);
           toast.error('Session expired. Please sign in again.');
         }
-      }, 50 * 60 * 1000); // 50 minutes - more conservative
+      }, 55 * 60 * 1000); // 55 minutes - less frequent refresh
     }
 
     return () => {

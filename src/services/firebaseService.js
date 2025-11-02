@@ -311,21 +311,23 @@ export const userService = {
   // Get admin dashboard statistics
   getAdminDashboardStats: async (organizationId) => {
     try {
-      // Fetch all properties
+      // Fetch properties with limit to prevent overload
       const propertiesSnapshot = await getDocs(query(
         collection(db, 'properties'),
-        where('organizationId', '==', organizationId)
+        where('organizationId', '==', organizationId),
+        limit(100) // Limit to 100 properties for dashboard stats
       ));
       const properties = propertiesSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
 
-      // Fetch all payments
+      // Fetch recent payments only (last 1000) for performance
       const paymentsSnapshot = await getDocs(query(
         collection(db, 'payments'),
         where('organizationId', '==', organizationId),
-        orderBy('createdAt', 'desc')
+        orderBy('createdAt', 'desc'),
+        limit(1000) // Limit to last 1000 payments
       ));
       const payments = paymentsSnapshot.docs.map(doc => ({
         id: doc.id,
@@ -333,16 +335,18 @@ export const userService = {
         createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(doc.data().createdAt)
       }));
 
-      // Fetch users by status
+      // Fetch users by status with limits
       const pendingUsers = await getDocs(query(
         collection(db, 'users'),
-        where('status', '==', 'pending')
+        where('status', '==', 'pending'),
+        limit(100) // Limit pending users for performance
       ));
 
-      // Fetch active users
+      // Fetch active users count only
       const activeUsersSnapshot = await getDocs(query(
         collection(db, 'users'),
-        where('status', '==', 'active')
+        where('status', '==', 'active'),
+        limit(1000) // Limit to 1000 for counting
       ));
 
       // Calculate total revenue
@@ -422,11 +426,12 @@ export const userService = {
   // Get system-wide dashboard statistics (super admin)
   getSystemDashboardStats: async () => {
     try {
-      // Fetch all properties (no org filter)
+      // Fetch properties with limit (no org filter but limited for performance)
       const propertiesSnapshot = await getDocs(
         query(
           collection(db, 'properties'),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(500) // Limit to 500 most recent properties
         )
       );
       const properties = propertiesSnapshot.docs.map(doc => ({
@@ -434,11 +439,12 @@ export const userService = {
         ...doc.data()
       }));
 
-      // Fetch all payments (no org filter)
+      // Fetch recent payments only (last 2000 for system-wide stats)
       const paymentsSnapshot = await getDocs(
         query(
           collection(db, 'payments'),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(2000) // Limit to 2000 most recent payments
         )
       );
       const payments = paymentsSnapshot.docs.map(doc => ({
@@ -447,14 +453,16 @@ export const userService = {
         createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(doc.data().createdAt)
       }));
 
-      // Fetch users by status
+      // Fetch users by status with limits
       const pendingUsers = await getDocs(query(
         collection(db, 'users'),
-        where('status', '==', 'pending')
+        where('status', '==', 'pending'),
+        limit(100) // Limit pending users
       ));
       const activeUsersSnapshot = await getDocs(query(
         collection(db, 'users'),
-        where('status', '==', 'active')
+        where('status', '==', 'active'),
+        limit(1000) // Limit active users for counting
       ));
 
       // Calculate totals
@@ -520,7 +528,7 @@ export const userService = {
 
 export const propertyService = {
   // Get all properties for user (role-based access)
-  getAll: async (userId, userRole = null, organizationId = null) => {
+  getAll: async (userId, userRole = null, organizationId = null, options = {}) => {
     try {
       console.log('🔍 Fetching properties with:', { userId, userRole, organizationId });
       console.log('🔍 Type checks:', { 
@@ -529,6 +537,7 @@ export const propertyService = {
         organizationIdType: typeof organizationId 
       });
       
+      const limitValue = options.limit || 200; // Default limit of 200 properties
       let q;
       
       // If no role or organization, try to get all properties without filters
@@ -536,7 +545,8 @@ export const propertyService = {
         console.log('⚠️ No auth data provided - fetching all properties');
         q = query(
           collection(db, 'properties'),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // Super admin can see all properties
@@ -544,7 +554,8 @@ export const propertyService = {
         console.log('📊 Query: Super admin - all properties');
         q = query(
           collection(db, 'properties'),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // Org admin can see properties in their organization
@@ -553,7 +564,8 @@ export const propertyService = {
         q = query(
           collection(db, 'properties'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // Property manager can see properties in their organization
@@ -562,7 +574,8 @@ export const propertyService = {
         q = query(
           collection(db, 'properties'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // Financial viewer can see properties in their organization
@@ -571,7 +584,8 @@ export const propertyService = {
         q = query(
           collection(db, 'properties'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // If we have organizationId but no specific role match, use it
@@ -580,7 +594,8 @@ export const propertyService = {
         q = query(
           collection(db, 'properties'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // Fallback to user's properties (for backward compatibility)
@@ -589,7 +604,8 @@ export const propertyService = {
         q = query(
           collection(db, 'properties'),
           where('userId', '==', userId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // Last resort - get all properties
@@ -597,7 +613,8 @@ export const propertyService = {
         console.log('📊 Query: Last resort - all properties (no filters)');
         q = query(
           collection(db, 'properties'),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       
@@ -744,10 +761,11 @@ export const propertyService = {
 
 export const rentService = {
   // Get all rent records (role-based access with aggressive fallbacks)
-  getAll: async (userId, userRole = null, organizationId = null) => {
+  getAll: async (userId, userRole = null, organizationId = null, options = {}) => {
     try {
       console.log('🔍 rentService.getAll called with:', { userId, userRole, organizationId });
       
+      const limitValue = options.limit || 500; // Default limit of 500 rent records
       let q;
       let fallbackAttempt = 0;
       
@@ -756,7 +774,8 @@ export const rentService = {
         console.log('📊 Query strategy: Super admin - all records');
         q = query(
           collection(db, 'rent'),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // Org admin can see rent records in their organization
@@ -765,7 +784,8 @@ export const rentService = {
         q = query(
           collection(db, 'rent'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // Property manager can see rent records in their organization
@@ -774,7 +794,8 @@ export const rentService = {
         q = query(
           collection(db, 'rent'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // Financial viewer can see rent records in their organization
@@ -783,7 +804,8 @@ export const rentService = {
         q = query(
           collection(db, 'rent'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // AGGRESSIVE FALLBACK: If we have organizationId but no specific role match
@@ -793,7 +815,8 @@ export const rentService = {
         q = query(
           collection(db, 'rent'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // AGGRESSIVE FALLBACK: Try with userId
@@ -803,7 +826,8 @@ export const rentService = {
         q = query(
           collection(db, 'rent'),
           where('userId', '==', userId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // LAST RESORT: Get all rent records (let Firestore rules handle access)
@@ -812,7 +836,8 @@ export const rentService = {
         fallbackAttempt = 3;
         q = query(
           collection(db, 'rent'),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       
@@ -1005,25 +1030,35 @@ const generateOrUpdateInvoice = async (paymentData, paymentId, userId, organizat
 
 export const invoiceService = {
   // Get all invoices (role-based access)
-  getAll: async (userId, userRole = null, organizationId = null) => {
+  getAll: async (userId, userRole = null, organizationId = null, options = {}) => {
     try {
+      const limitValue = options.limit || 500; // Default limit of 500 invoices
       let q;
       
-      // Temporary: Query without orderBy until index is built
+      // Query with limit to prevent overload
       if (userRole === 'super_admin') {
-        q = query(collection(db, 'invoices'));
+        q = query(
+          collection(db, 'invoices'),
+          limit(limitValue)
+        );
       } else if (userRole === 'org_admin' && organizationId) {
         q = query(
           collection(db, 'invoices'),
-          where('organizationId', '==', organizationId)
+          where('organizationId', '==', organizationId),
+          limit(limitValue)
         );
       } else if (userRole === 'property_manager' && organizationId) {
         q = query(
           collection(db, 'invoices'),
-          where('organizationId', '==', organizationId)
+          where('organizationId', '==', organizationId),
+          limit(limitValue)
         );
       } else {
-        q = query(collection(db, 'invoices'), where('userId', '==', userId));
+        q = query(
+          collection(db, 'invoices'), 
+          where('userId', '==', userId),
+          limit(limitValue)
+        );
       }
       
       const snapshot = await getDocs(q);
@@ -1264,6 +1299,7 @@ export const paymentService = {
     try {
       console.log('🔍 paymentService.getAll called with:', { userId, userRole, organizationId });
       
+      const defaultLimit = filters.limit || 1000; // Default limit of 1000 payments
       let q;
       
       // Super admin can see all payments
@@ -1271,7 +1307,8 @@ export const paymentService = {
         console.log('📊 Payment query: Super admin - all payments');
         q = query(
           collection(db, 'payments'),
-          orderBy('paymentDate', 'desc')
+          orderBy('paymentDate', 'desc'),
+          limit(defaultLimit)
         );
       }
       // Org admin can see payments in their organization
@@ -1280,7 +1317,8 @@ export const paymentService = {
         q = query(
           collection(db, 'payments'),
           where('organizationId', '==', organizationId),
-          orderBy('paymentDate', 'desc')
+          orderBy('paymentDate', 'desc'),
+          limit(defaultLimit)
         );
       }
       // Property manager can see payments in their organization
@@ -1289,7 +1327,8 @@ export const paymentService = {
         q = query(
           collection(db, 'payments'),
           where('organizationId', '==', organizationId),
-          orderBy('paymentDate', 'desc')
+          orderBy('paymentDate', 'desc'),
+          limit(defaultLimit)
         );
       }
       // Financial viewer can see payments in their organization
@@ -1298,7 +1337,8 @@ export const paymentService = {
         q = query(
           collection(db, 'payments'),
           where('organizationId', '==', organizationId),
-          orderBy('paymentDate', 'desc')
+          orderBy('paymentDate', 'desc'),
+          limit(defaultLimit)
         );
       }
       // AGGRESSIVE FALLBACK: If we have organizationId
@@ -1307,7 +1347,8 @@ export const paymentService = {
         q = query(
           collection(db, 'payments'),
           where('organizationId', '==', organizationId),
-          orderBy('paymentDate', 'desc')
+          orderBy('paymentDate', 'desc'),
+          limit(defaultLimit)
         );
       }
       // AGGRESSIVE FALLBACK: Try with userId
@@ -1316,7 +1357,8 @@ export const paymentService = {
         q = query(
           collection(db, 'payments'),
           where('userId', '==', userId),
-          orderBy('paymentDate', 'desc')
+          orderBy('paymentDate', 'desc'),
+          limit(defaultLimit)
         );
       }
       // LAST RESORT: Get all payments
@@ -1324,11 +1366,13 @@ export const paymentService = {
         console.log('📊 Payment query: Last resort - all payments');
         q = query(
           collection(db, 'payments'),
-          orderBy('paymentDate', 'desc')
+          orderBy('paymentDate', 'desc'),
+          limit(defaultLimit)
         );
       }
       
       // Apply additional filters
+      // Note: We already applied limit above, so skip if it's already there
       if (filters.propertyId) {
         q = query(q, where('propertyId', '==', filters.propertyId));
       }
@@ -1337,9 +1381,6 @@ export const paymentService = {
       }
       if (filters.year) {
         q = query(q, where('year', '==', filters.year));
-      }
-      if (filters.limit) {
-        q = query(q, limit(filters.limit));
       }
       
       const snapshot = await getDocs(q);
@@ -1466,34 +1507,38 @@ export const paymentService = {
     try {
       console.log('📊 Fetching dashboard summary with:', { userId, userRole, organizationId });
       
-      // Build query based on RBAC
+      // Build query based on RBAC with limits to prevent overload
       let propertiesQuery;
       if (userRole === 'super_admin') {
-        // Super admin sees all
+        // Super admin sees all (limited)
         propertiesQuery = query(
           collection(db, 'properties'),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(200) // Limit for performance
         );
       } else if (userRole === 'org_admin' && organizationId) {
         // Org admin sees organization properties
         propertiesQuery = query(
           collection(db, 'properties'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(200) // Limit for performance
         );
       } else if (userRole === 'property_manager' && organizationId) {
         // Property manager sees organization properties
         propertiesQuery = query(
           collection(db, 'properties'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(200) // Limit for performance
         );
       } else {
         // Default: user's properties
         propertiesQuery = query(
           collection(db, 'properties'),
           where('userId', '==', userId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(200) // Limit for performance
         );
       }
       
@@ -1519,34 +1564,38 @@ export const paymentService = {
         return total;
       }, 0);
 
-      // Fetch all payments based on RBAC
+      // Fetch payments based on RBAC with limits
       let paymentsQuery;
       if (userRole === 'super_admin') {
-        // Super admin sees all payments
+        // Super admin sees all payments (limited)
         paymentsQuery = query(
           collection(db, 'payments'),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(1000) // Limit to last 1000 payments
         );
       } else if (userRole === 'org_admin' && organizationId) {
         // Org admin sees organization payments
         paymentsQuery = query(
           collection(db, 'payments'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(1000) // Limit to last 1000 payments
         );
       } else if (userRole === 'property_manager' && organizationId) {
         // Property manager sees organization payments
         paymentsQuery = query(
           collection(db, 'payments'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(1000) // Limit to last 1000 payments
         );
       } else {
         // Default: user's payments
         paymentsQuery = query(
           collection(db, 'payments'),
           where('userId', '==', userId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(1000) // Limit to last 1000 payments
         );
       }
       
@@ -1674,10 +1723,11 @@ export const paymentService = {
           .sort((a, b) => b.collected - a.collected)
           .slice(0, 5);
 
-        // Overdue invoices and aging buckets
+        // Overdue invoices and aging buckets (limited for performance)
         const allInvoices = await invoiceService.getAll(userId, userRole, organizationId);
         const today = new Date();
-        const overdueInvoices = allInvoices.filter(inv => inv.status !== 'paid' && inv.dueDate && new Date(inv.dueDate) < today);
+        // Only get recent overdue invoices to avoid processing thousands
+        const overdueInvoices = allInvoices.slice(0, 500).filter(inv => inv.status !== 'paid' && inv.dueDate && new Date(inv.dueDate) < today);
         const aging = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
         overdueInvoices.forEach(inv => {
           const due = new Date(inv.dueDate);
@@ -1723,15 +1773,17 @@ export const paymentService = {
 
 export const tenantService = {
   // Get all tenants (role-based access)
-  getAll: async (userId, userRole = null, organizationId = null) => {
+  getAll: async (userId, userRole = null, organizationId = null, options = {}) => {
     try {
+      const limitValue = options.limit || 500; // Default limit of 500 tenants
       let q;
       
       // Super admin can see all tenants
       if (userRole === 'super_admin') {
         q = query(
           collection(db, 'tenants'),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // Org admin can see tenants in their organization
@@ -1739,7 +1791,8 @@ export const tenantService = {
         q = query(
           collection(db, 'tenants'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // Property manager can see tenants for assigned properties
@@ -1747,7 +1800,8 @@ export const tenantService = {
         q = query(
           collection(db, 'tenants'),
           where('propertyManagerIds', 'array-contains', userId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // Financial viewer can see tenants in their organization
@@ -1755,7 +1809,8 @@ export const tenantService = {
         q = query(
           collection(db, 'tenants'),
           where('organizationId', '==', organizationId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       // Fallback to user's tenants (for backward compatibility)
@@ -1763,7 +1818,8 @@ export const tenantService = {
         q = query(
           collection(db, 'tenants'),
           where('userId', '==', userId),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(limitValue)
         );
       }
       
