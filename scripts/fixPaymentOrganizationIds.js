@@ -7,24 +7,49 @@
  * Run with: node scripts/fixPaymentOrganizationIds.js
  */
 
-const admin = require('firebase-admin');
-const serviceAccount = require('../prosys-dev-firebase-adminsdk-d7z3z-74bfdfa5e7.json');
+import { initializeApp, getApps } from 'firebase/app';
+import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-// Initialize Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-  });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Import Firebase config from .env
+const envPath = join(__dirname, '..', '.env');
+let envContent = '';
+try {
+  envContent = readFileSync(envPath, 'utf8');
+} catch (error) {
+  console.error('❌ Could not read .env file');
+  process.exit(1);
 }
 
-const db = admin.firestore();
+const getEnvVar = (name) => {
+  const match = envContent.match(new RegExp(`^${name}=(.*)$`, 'm'));
+  return match ? match[1] : null;
+};
+
+const firebaseConfig = {
+  apiKey: getEnvVar('VITE_FIREBASE_API_KEY'),
+  authDomain: getEnvVar('VITE_FIREBASE_AUTH_DOMAIN'),
+  projectId: getEnvVar('VITE_FIREBASE_PROJECT_ID'),
+  storageBucket: getEnvVar('VITE_FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: getEnvVar('VITE_FIREBASE_MESSAGING_SENDER_ID'),
+  appId: getEnvVar('VITE_FIREBASE_APP_ID'),
+};
+
+// Initialize Firebase
+const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 async function fixPaymentOrganizationIds() {
   try {
     console.log('🔧 Starting payment organizationId fix...\n');
 
     // Get all payments
-    const paymentsSnapshot = await db.collection('payments').get();
+    const paymentsSnapshot = await getDocs(collection(db, 'payments'));
     console.log(`📊 Found ${paymentsSnapshot.size} total payments\n`);
 
     let fixed = 0;
@@ -50,8 +75,8 @@ async function fixPaymentOrganizationIds() {
       // Try to get organizationId from invoice
       if (payment.invoiceId) {
         try {
-          const invoiceDoc = await db.collection('invoices').doc(payment.invoiceId).get();
-          if (invoiceDoc.exists) {
+          const invoiceDoc = await getDoc(doc(db, 'invoices', payment.invoiceId));
+          if (invoiceDoc.exists()) {
             const invoice = invoiceDoc.data();
             if (invoice.organizationId) {
               organizationId = invoice.organizationId;
@@ -66,8 +91,8 @@ async function fixPaymentOrganizationIds() {
       // Try to get organizationId from rent record
       if (!organizationId && payment.rentId) {
         try {
-          const rentDoc = await db.collection('rent').doc(payment.rentId).get();
-          if (rentDoc.exists) {
+          const rentDoc = await getDoc(doc(db, 'rent', payment.rentId));
+          if (rentDoc.exists()) {
             const rent = rentDoc.data();
             if (rent.organizationId) {
               organizationId = rent.organizationId;
@@ -82,8 +107,8 @@ async function fixPaymentOrganizationIds() {
       // Try to get organizationId from property
       if (!organizationId && payment.propertyId) {
         try {
-          const propertyDoc = await db.collection('properties').doc(payment.propertyId).get();
-          if (propertyDoc.exists) {
+          const propertyDoc = await getDoc(doc(db, 'properties', payment.propertyId));
+          if (propertyDoc.exists()) {
             const property = propertyDoc.data();
             if (property.organizationId) {
               organizationId = property.organizationId;
@@ -98,9 +123,9 @@ async function fixPaymentOrganizationIds() {
       if (organizationId) {
         try {
           // Update the payment with organizationId
-          await db.collection('payments').doc(paymentId).update({
+          await updateDoc(doc(db, 'payments', paymentId), {
             organizationId,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: serverTimestamp(),
           });
 
           console.log(`   ✅ Updated with organizationId: ${organizationId} (from ${source})`);
