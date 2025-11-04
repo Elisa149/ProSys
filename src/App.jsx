@@ -14,6 +14,7 @@ const RegisterPage = lazy(() => import('./pages/auth/RegisterPage'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const PropertiesPage = lazy(() => import('./pages/PropertiesPage'));
 const CreatePropertyPage = lazy(() => import('./pages/CreatePropertyPage'));
+const EditPropertyPage = lazy(() => import('./pages/EditPropertyPage'));
 const PropertyDetailsPage = lazy(() => import('./pages/PropertyDetailsPage'));
 const SpaceAssignmentPage = lazy(() => import('./pages/SpaceAssignmentPage'));
 const AllSpacesPage = lazy(() => import('./pages/AllSpacesPage'));
@@ -140,6 +141,13 @@ function App() {
                 requiredRoles={['super_admin', 'org_admin', 'property_manager']}
               >
                 <CreatePropertyPage />
+              </RoleGuard>
+            } />
+            <Route path="properties/:id/edit" element={
+              <RoleGuard 
+                requiredRoles={['super_admin', 'org_admin', 'property_manager']}
+              >
+                <EditPropertyPage />
               </RoleGuard>
             } />
             <Route path="properties/:id" element={<PropertyDetailsPage />} />
