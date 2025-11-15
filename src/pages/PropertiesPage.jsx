@@ -140,7 +140,7 @@ const PropertiesPage = () => {
 
   const handleEdit = () => {
     if (selectedProperty) {
-      navigate(`/app/properties/${selectedProperty.id}?edit=true`);
+      navigate(`/app/properties/${selectedProperty.id}/edit`);
     }
     handleMenuClose();
   };

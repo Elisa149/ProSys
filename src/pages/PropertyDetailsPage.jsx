@@ -256,7 +256,7 @@ const PropertyDetailsPage = () => {
           <Button
             variant="outlined"
             startIcon={<Edit />}
-            onClick={() => navigate(`/app/properties/${id}?edit=true`)}
+            onClick={() => navigate(`/app/properties/${id}/edit`)}
           >
             Edit
           </Button>
@@ -935,7 +935,7 @@ const PropertyDetailsPage = () => {
                 fullWidth
                 variant="outlined"
                 startIcon={<Edit />}
-                onClick={() => navigate(`/app/properties/${id}?edit=true`)}
+                onClick={() => navigate(`/app/properties/${id}/edit`)}
               >
                 Edit Property
               </Button>
